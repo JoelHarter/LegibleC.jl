@@ -2278,3 +2278,90 @@ would not have fit in the free time it was made in. Not which assistant; the
 name is credit to a tool, not information a reader acts on. Third, that the
 tests are what vouch for the code: the suite against Julia on every push. It
 does not hedge about quality, and it gives the assistant no byline.
+
+## 2026-10-12 — A project name, and the header that includes all the others
+
+**What was asked.** The include-all header was `juliatranspiled.h` unless
+told, the one name in the output that announced the tool; a way to leave
+that header out; and a name for the library as a whole, to use wherever C
+wants one.
+
+**`project`, `"lib"` unless told.** The name of the library the output is.
+It names the header a caller includes, `lib.h`, and the file of mutable
+globals beside it, and with `split` off the two files that hold everything.
+It is the first word of every macro the output invents: the irrationals,
+`LIB_PI` where it was `LEGIBLEC_PI`, and the include guards, `LIB_ENERGY_H`
+where it was `ENERGY_H`, the project's own header guarded `LIB_H` as a C
+author would write it. The tool's name is gone from the output, and two
+generated libraries keep out of each other's way, which is what a prefix is
+for in C. The author's names, functions and structs, carry no prefix: the C
+reads as the author wrote it.
+
+Why `lib`: a fixed word, because a target from the REPL has no file to be
+named after and a default that depends on circumstances is one to look up;
+`lib` because `lib.h` is what a C reader knows as the library's interface;
+not `main`, which is the caller's own file in nearly every program; not
+`all`, which is no idiom of C's.
+
+**`include`, on unless told.** The project header holds nothing but the
+includes; off, it isn't written, and a caller includes the headers it uses.
+With `split` off there is no other header and the option does nothing. The
+globals, which lived in the project header, go to a file of their own under
+`split`, `<project>_common.h` and `<project>_common.c`: the constants, the
+`extern` declarations with the definitions in the `.c`, and the declarations
+of C functions called through `ccall`. Named after the project rather than by
+an option of its own, so that several calls into one folder each keep theirs
+with nothing more to say; `common`, C's own word for what every file of a
+library shares (`ssl_common.h`), rather than `const`, since two of its three
+contents aren't constant. Its guard is `LIB_COMMON_H`, the project's name
+once. So each file has one role: a function's, a struct's, the
+helpers', the globals', the index's.
+
+**Not done.** The out-of-line helpers, `solve_4x4_4` and the rest, are plain
+external symbols: two generated libraries in one program collide on them at
+link time. A project prefix on the helpers would mend it at the cost of every
+step comment's readability. Left as a known limit, on the todo.
+
+## 2026-10-12 — A type the Julia never named has no file of its own
+
+**What was asked.** `transpile(voran)` for a struct with a 28-tuple field wrote
+`TupleF64xF64x…xF64.h`, a file for a type nobody defined, beside `voran.h`.
+
+**Decided.** A struct of the author's keeps a header of its own: it is
+defined in one place in the Julia, and C readers get it in one place. A type
+the C needed and the Julia only implied — the struct a tuple is returned in,
+a tuple held as a value, what a function captured — is a helper of the C's,
+and goes beside what needs it: a return tuple's struct with the function whose
+return it is, `step_t` in `step.h`, since that function implied it; a
+structural tuple in the header of the first struct or function of the
+author's that mentions it, structs before functions since a struct that holds
+it is the deeper home. It moves when another comes first, which is acceptable
+for a thing nobody named. The old rule, a header for every struct since
+another function may come to use it, was decided for `step_t` and had swept
+the implied types in with it. A pass-through, `twice` returning `step`'s
+tuple, includes `step.h`.
+
+**And the 28-tuple itself** is the real fault: a homogeneous tuple of a
+scalar is a struct of 28 lettered fields, `x.a.ab` for `x.a[28]`, where a C
+author writes `double a[28]`. That is the next piece of work, on the todo;
+with it the file in question stops existing at all.
+
+## 2026-10-12 — A static array's length is filled in wherever it is left out
+
+**What was asked.** `a::NTuple{2, SMatrix{2,2,Float64}}` was refused with
+"no C type for `Tuple{SMatrix{2, 2, Float64}, …}`", which said nothing about
+why. `SMatrix{2,2,Float64}` is how people write the type, and a signature
+written that way was already accepted.
+
+**Decided.** `completed`, which fills in the length a signature leaves out, is
+applied to a struct's fields and a tuple's elements too, and so to every type
+the C spells: there is exactly one concrete type `SMatrix{2,2,Float64}` can
+mean. The struct transpiles, as `double A[2][2]` inside the tuple's struct.
+
+**What Julia itself does not do.** In Julia such a field is abstract, so a
+value read from it is boxed and a function that computes with it is inferred
+`Any`: `v.a[1] * 2.0` is a dynamic call in the Julia, and the C has no type
+for `Any`. That function is refused, with a message that names the cause and
+the spelling with the length. Reading the field or an element of it, which
+needs no inference, works. Slow Julia is still Julia, so the struct is
+accepted; code Julia can't type isn't, as everywhere.

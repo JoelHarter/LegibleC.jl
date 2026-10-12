@@ -12,6 +12,12 @@ semantics for it. `Point(x, y)` is `(Point){x, y}`; `p.x` is `p.x`;
 by field, the array copied in, since C can't initialize an array member from
 another array in a compound literal.
 
+A field typed `SMatrix{2,2,Float64}`, the way people write it, leaves the
+length out; Julia keeps such a field abstract, but there is only one concrete
+type it can mean, and the C uses it, `double a[2][2]`. (Julia's own inference
+doesn't: a function that computes with such a field is typed `Any` by Julia and
+refused with a message that says to write `SMatrix{2,2,Float64,4}`.)
+
 A `mutable struct` is a reference in Julia — two variables can hold the same
 one — so in C it is always handled **through a pointer**: `Counter *c`,
 `c->n`, and a function that returns the object it was given returns the
@@ -93,6 +99,13 @@ made for it; a tuple that only feeds a constructor or block construction —
 `SVector(a, b, c)`, `[A B; C D]` — never exists in C either. A tuple held as
 a value elsewhere — a struct field, a tuple of tuples — is the structural
 `TupleF64xI64` with fields `a`, `b`, … named like helper inputs.
+
+Under `split`, a struct of the author's has a header of its own; a type the
+Julia never named has none: a return tuple's struct sits in the header of the
+function whose return it is, `step_t` in `step.h`, and a structural tuple in
+the header of the first struct or function that mentions it, moving when
+another comes first. It is a thing the C needs to say what the Julia said,
+not a type anyone would include on purpose.
 
 Not yet: a `NamedTuple`, which would name the fields when what's returned
 isn't variables.

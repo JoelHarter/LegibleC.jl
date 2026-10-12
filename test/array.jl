@@ -534,9 +534,9 @@ pibroadcastint(v::SVector{3,Int64}) = v .+ π
     A = SMatrix{2,2}(1.0, 2.0, 3.0, 4.0)
     src = check("irrational", [Case(piscaled, A), Case(pishifted, A), Case(pidotted, SVector(1.0, 2.0, 3.0)), Case(pidivided, SVector(1.0, 2.0, 3.0)),
         Case(pisingle, SVector(1.0f0, 2.0f0, 3.0f0)), Case(piinteger, SVector(1, 2, 3)), Case(pibroadcastint, SVector(1, 2, 3))])
-    @test occursin("mul_s_2x2(LEGIBLEC_PI, A, out);", src) && occursin("mulP_s_3(LEGIBLEC_PI, v, out);", src) && occursin("div_3_s(v, LEGIBLEC_E, out);", src)
-    @test occursin("mul_sF32_3F32((float)LEGIBLEC_PI, v, out);", src)                       # rounded to the type it meets, as Julia rounds it
-    @test occursin("mul_3I64_sF64(v, LEGIBLEC_PI, out);", src) && occursin("addP_3I64_sF64(v, LEGIBLEC_PI, out);", src)   # Float64 beside integers
+    @test occursin("mul_s_2x2(IRRATIONAL_PI, A, out);", src) && occursin("mulP_s_3(IRRATIONAL_PI, v, out);", src) && occursin("div_3_s(v, IRRATIONAL_E, out);", src)
+    @test occursin("mul_sF32_3F32((float)IRRATIONAL_PI, v, out);", src)                       # rounded to the type it meets, as Julia rounds it
+    @test occursin("mul_3I64_sF64(v, IRRATIONAL_PI, out);", src) && occursin("addP_3I64_sF64(v, IRRATIONAL_PI, out);", src)   # Float64 beside integers
 end
 @testset "gap" begin
     @test_throws ArgumentError csource("gapsizedim", gapsizedim)

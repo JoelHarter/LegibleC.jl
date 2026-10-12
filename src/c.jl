@@ -29,7 +29,7 @@ mutable struct Program
     returned::Dict{Core.MethodInstance, Union{String, Nothing}}    # the variable a user function returns, if it returns one (`returnname!`)
     effects::Dict{Core.MethodInstance, Set{Symbol}}                # what a user function does besides compute (see `effects!`)
     kinds::Dict{Core.MethodInstance, Any}                          # the C struct a tuple-returning function returns (see `returnkind!`)
-    tupledefs::Vector{Pair{String, String}}                        # those typedefs, name => text
+    tupledefs::Vector{Tuple{String, String, String}}               # those typedefs: name, the function whose return it is, text
     globals::Vector{Any}                                           # the program's global variables, in order (see `global!`)
     exported::Set{String}                                          # helpers asked for by name, written as functions of the user's
     # Every file-scope name the author's own things asked for, and got (`claim!`); and, on a
@@ -68,15 +68,20 @@ end
 function Program(; precise::Bool=false, width::Integer=100, suffix::Bool=false, limit::Integer=40)
     prog = Program(Dict{String, String}(), Set(["stdint.h", "stdbool.h"]), Dict{Core.MethodInstance, String}(),
             Tuple{Core.MethodInstance, Vector{Type}, String}[], Set{String}(), Dict{String, String}(), Pair{Type, String}[], precise, width,
-            suffix, Dict{Core.MethodInstance, Union{String, Nothing}}(), Dict{Core.MethodInstance, Set{Symbol}}(), Dict{Core.MethodInstance, Any}(), Pair{String, String}[], Any[], Set{String}(),
+            suffix, Dict{Core.MethodInstance, Union{String, Nothing}}(), Dict{Core.MethodInstance, Set{Symbol}}(), Dict{Core.MethodInstance, Any}(), Tuple{String, String, String}[], Any[], Set{String}(),
             Any[], Dict{Any, String}(), Set{String}(), Set{Any}(), Set{String}(), nothing, Dict{Any, String}(), Dict{Any, Tuple{String, String}}(), limit, Set{Any}())
     empty!(programs)                         # one program at a time: the table of helpers says which (`power.jl`)
     programs[prog.helpers] = prog
     return prog
 end
 
+# The project's name, set by `transpile`: the include-all header is named by it, and every
+# macro of ours — an irrational's, an include guard — begins with it, `LIB_PI`, `LIB_ORBIT_H`,
+# so two generated libraries keep out of each other's way.
+const project = Ref("lib")
+macroprefix() = uppercase(identifier(project[])) * "_"
 # The irrationals the current `transpile` call has met, by the macro each is written as:
-# `"LEGIBLEC_PI" => π`. The helper header defines the ones the output uses.
+# `"LIB_PI" => π`. The helper header defines the ones the output uses.
 const irrationals = Dict{String, Any}()
 const macroavoid = Set{String}()        # names of the author's that a macro must keep clear of
 
@@ -1293,7 +1298,7 @@ function written!(lines, sc::Scope, i, st)
         if f === Base.setproperty! || f === Base.setfield!
             property(sc, f, st.args[2], st.args[3], i)
             S = valuetype(sc, st.args[2])
-            F = fieldtype(S, literal(sc, st.args[3]))
+            F = completed(fieldtype(S, literal(sc, st.args[3])))
             target = fieldaccess(sc, st.args[2], st.args[3])
             if isarray(F)
                 copy!(lines, sc, value(sc, st.args[4]), valuetype(sc, st.args[4]), target, F)
@@ -2287,13 +2292,13 @@ function returnkind!(prog::Program, mi::Core.MethodInstance, cname::AbstractStri
     end
     kind = inherited !== nothing && names === nothing ? inherited :
            names !== nothing ? Kind(free(identifier(cname) * "_t", union(prog.names, Set(structname(T) for (T, _) in prog.structs), prog.yielded, reserved)), identifiers(names)) : fallback
-    if kind.cname != fallback.cname && !any(p -> p.first == kind.cname, prog.tupledefs) && inherited === nothing
+    if kind.cname != fallback.cname && !any(p -> p[1] == kind.cname, prog.tupledefs) && inherited === nothing
         for F in elements(R)
             structdef!(prog, F)
         end
         listed = length(kind.fields) == 1 ? kind.fields[1] : length(kind.fields) == 2 ? join(kind.fields, " and ") : join(kind.fields[1:end-1], ", ") * ", and " * kind.fields[end]
-        push!(prog.tupledefs, kind.cname => "/// the return value of $cname: $listed, as one struct since C returns one value\n" *
-                                            "typedef struct {\n" * join("    " .* declare.(elements(R), kind.fields) .* ";", "\n") * "\n} $(kind.cname);\n")
+        push!(prog.tupledefs, (kind.cname, cname, "/// the return value of $cname: $listed, as one struct since C returns one value\n" *
+                                            "typedef struct {\n" * join("    " .* declare.(elements(R), kind.fields) .* ";", "\n") * "\n} $(kind.cname);\n"))
     end
     kind.cname == fallback.cname && structdef!(prog, R)
     prog.kinds[mi] = kind
@@ -3045,7 +3050,7 @@ function globaldecl(g::Global; value::Bool=true, note=nothing, text=nothing)
 end
 
 # The Julia expression a global was assigned, as its C initializer, so that `π` in the
-# Julia is `LEGIBLEC_PI` in the C rather than the double it became — the symbol says so,
+# Julia is `LIB_PI` in the C rather than the double it became — the symbol says so,
 # never a value. Only what a static initializer may hold: number literals, an irrational
 # by its symbol (`π`, `ℯ`, the author's own), a sign, and `+ - * /` of those; an array literal of such, laid
 # out by evaluating the literal with each leaf replaced by its number. A leaf that is
@@ -3241,6 +3246,7 @@ initializer(x) = "{" * join((initializer(getfield(x, k)) for k in 1:fieldcount(t
 # The typedef for a struct or tuple type, added to the program once, after the types
 # of its fields. Anything that isn't a struct or tuple is ignored.
 function structdef!(prog::Program, T::Type)
+    T = completed(T)
     (isstruct(T) || istuple(T)) || return
     any(p -> p.first === T, prog.structs) && return
     isstruct(T) && (k = findfirst(F -> F isa Type && F <: Function, collect(Any, fieldtypes(T))); k !== nothing) &&
@@ -3770,14 +3776,14 @@ function charliteral(c::Char)
 end
 
 # An irrational — `π`, `ℯ`, `Base.MathConstants.catalan`, one of the author's own made
-# with `Base.@irrational` — is a macro named after it, `LEGIBLEC_PI`, `LEGIBLEC_CATALAN`,
-# defined in the helper header to 128-bit precision. Under `posix`, π and ℯ are `M_PI`
+# with `Base.@irrational` — is a macro named after it under the project's prefix, `LIB_PI`,
+# `LIB_CATALAN`, defined in the helper header to 128-bit precision. Under `posix`, π and ℯ are `M_PI`
 # and `M_E` from `math.h` instead. The name is for the symbol the Julia wrote, never
 # for a value: a double that happens to equal one is digits, as it is in the Julia.
 function macroname(x::AbstractIrrational)
     posix[] && x === π && return "M_PI"
     posix[] && x === ℯ && return "M_E"
-    name = "LEGIBLEC_" * uppercase(identifier(string(irrationalname(x))))
+    name = macroprefix() * uppercase(identifier(string(irrationalname(x))))
     # `φ` and `ϕ` both spell `PHI`: the second is `PHI_`. And a macro gives way to a name of
     # the author's, which outranks it (`macroavoid`, known on a build done again).
     while haskey(irrationals, name) && irrationals[name] !== x || name in macroavoid

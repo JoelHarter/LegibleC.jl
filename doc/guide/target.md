@@ -43,10 +43,10 @@ static const double CODATA_c = 2.99792458e8;
 in the header, where every file that includes it can fold it (with `source`
 off, just the note: `… = 2.99792458e8;  // speed of light, m/s`). The
 initializer is written from that Julia line's expression where a static
-initializer can hold it — number literals, `π` and `ℯ` as `LEGIBLEC_PI` and
-`LEGIBLEC_E`, signs, `+ - * /`, and array literals of those, a matrix one
-row per line — so `const τ = 2π` is `2 * LEGIBLEC_PI` and `[1.0, π]` is
-`{1.0, LEGIBLEC_PI}`; anything else, a name or a call, is the value Julia
+initializer can hold it — number literals, `π` and `ℯ` as `LIB_PI` and
+`LIB_E`, signs, `+ - * /`, and array literals of those, a matrix one
+row per line — so `const τ = 2π` is `2 * LIB_PI` and `[1.0, π]` is
+`{1.0, LIB_PI}`; anything else, a name or a call, is the value Julia
 holds, as digits. Every element written from the expression is checked
 against the value. Only the constants a function reads come out, however
 many the module defines. A
@@ -59,7 +59,7 @@ to decide `const`; a value with no binding there is a constant. The macro
 form sets `scope` to wherever it is written:
 
 ```julia
-@transpile(fall, Point; g, μ, outfile="body")
+@transpile(fall, Point; g, μ, project="body")
 ```
 
 which is the one to use from inside a module. A variable named like an

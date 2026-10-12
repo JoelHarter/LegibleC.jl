@@ -107,7 +107,7 @@ function check(name, cases::Vector{Case}; targets=nothing, extra::AbstractString
     dir = mktempdir()
     fs = unique(c.f for c in cases)
     scope = parentmodule(fs[1])            # the test module: its names are bare
-    paths = transpile((targets === nothing ? fs : targets)...; outpath=dir, outfile=name, scope, kw...)
+    paths = transpile((targets === nothing ? fs : targets)...; outpath=dir, project=name, scope, kw...)
     path = paths isa AbstractString ? paths : paths[1]
     LegibleC.scope[] = scope               # so the names spelled below match the file's
     LegibleC.booltype[] = get(kw, :bool, Bool)
@@ -204,7 +204,7 @@ function csource(name, targets...; kw...)
     own(g) = g isa Function && !(nameof(Base.moduleroot(parentmodule(g))) in (:Core, :Base, :LinearAlgebra, :StaticArrays))
     f = findfirst(t -> t isa Function && own(t) || t isa Tuple && own(t[1]), collect(targets))
     scope = f === nothing ? Main : parentmodule(targets[f] isa Tuple ? targets[f][1] : targets[f])
-    path = transpile(targets...; outpath=dir, outfile=name, scope, kw...)
+    path = transpile(targets...; outpath=dir, project=name, scope, kw...)
     path isa AbstractString || (path = path[1])
     last = basename(path)
     out = dirname(path)

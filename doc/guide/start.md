@@ -21,7 +21,7 @@ using StaticArrays, LinearAlgebra
 "Kinetic energy of a body of mass `m` moving at `v`."
 energy(m::Float64, v::SVector{3,Float64}) = m * dot(v, v) / 2
 
-transpile(energy; outfile="body", outpath=".")
+transpile(energy; project="body", outpath=".")
 ```
 
 That writes an `out/` folder next to where you ran it, and returns the path
@@ -32,13 +32,15 @@ holds:
   prototype under a Doxygen block made from its docstring. Every function
   has such a pair, named after it, the ones you listed and the ones they
   call alike.
-- a header for each struct, named after it, `Body.h`, and for the struct a
-  function returns a tuple in, `step_t.h`: another function may come to use
-  it, so it isn't kept in the file of the first that did.
-- `body.h` — the one header a caller includes: it includes all the others,
-  and holds the constants as `static const` with their values and the
-  comments from their definitions, and any other global as `extern`.
-  `body.c` holds the mutable globals, and is there only when there are any.
+- a header for each struct of yours, named after it, `Body.h`. A type the C
+  needed and you never named — the struct a tuple is returned in, `step_t` —
+  sits in the header of the first function or struct that mentions it.
+- `body_common.h` — the constants as `static const` with their values and
+  the comments from their definitions, and any other global as `extern`;
+  `body_common.c` holds those globals' definitions. Both are there only
+  when there are any.
+- `body.h` — the one header a caller includes: it includes all the others
+  and holds nothing else. Left out with `include=false`.
 - `helper.h` — everything generated that your functions need: small
   helpers as `static inline` functions, each with a two-line comment, and
   prototypes for the larger ones.

@@ -8,7 +8,7 @@ const c23floattypes = Ref(false)
 const posix = Ref(false)
 # May the C contain a `goto`? Only for the one thing C has no other word for, leaving a whole
 # nest of loops at once (the `goto` option of `transpile`). Off, the nest is left by a flag.
-const gotos = Ref(false)            # π and ℯ as POSIX `M_PI` and `M_E` rather than our own `LEGIBLEC_PI` and `LEGIBLEC_E`
+const gotos = Ref(false)            # π and ℯ as POSIX `M_PI` and `M_E` rather than our own `LIB_PI` and `LIB_E`
 const booltype = Ref{Type}(Bool)
 
 # The number types that go unmarked in a name, `add_3` and not `add_3F64`, `gcd` and not
@@ -78,7 +78,7 @@ const scalars = (
 
 # The C spelling of a Julia type.
 function ctype(T::Type)
-    T = forced(T)
+    T = completed(forced(T))
     T === Bool && booltype[] !== Bool && return ctype(booltype[])
     T === Float64 && c23floattypes[] && return "_Float64"
     T === Float32 && c23floattypes[] && return "_Float32"
@@ -90,6 +90,7 @@ function ctype(T::Type)
     isstruct(T) && return structname(T) * (ismutabletype(T) ? " *" : "")
     istuple(T) && return structname(T)
     T <: AbstractArray && throw(ArgumentError("arrays are not yet supported (got $T)"))
+    T === Any && throw(ArgumentError("a value Julia typed `Any`: it could be anything, so the C has no type for it. Julia infers no better through a field whose type isn't concrete — `a::NTuple{2, SMatrix{2,2,Float64}}` leaves the length out, and is `SMatrix{2,2,Float64,4}` in full — or through a container of mixed types"))
     T isa Type && Function <: T && throw(ArgumentError("a value typed `$T` could be any function, so which one runs would be decided while the program runs, and the C would need a function pointer. Pass the function as an argument instead, where Julia knows which it is"))
     throw(ArgumentError("no C type for $T"))
 end
@@ -135,7 +136,7 @@ isstruct(T::Type) = T isa DataType && isstructtype(T) && !(T <: AbstractArray) &
 #
 # A function held as a value is one too: `x -> a * x + b` is what it captured, `a` and `b`, and
 # a function that captured nothing is a tuple of nothing (`lambda.jl`).
-istuple(T::Type) = T isa DataType && isconcretetype(T) && (T <: Tuple || T <: Function)
+istuple(T::Type) = (T = completed(T); T isa DataType && isconcretetype(T) && (T <: Tuple || T <: Function))
 
 # The types a tuple holds, in order: a tuple's elements, what a function captured.
 # A function that captured another holds what that one captured, in its place.
@@ -143,10 +144,10 @@ istuple(T::Type) = T isa DataType && isconcretetype(T) && (T <: Tuple || T <: Fu
 # Written as plain loops, and not specialised on the type: a closure over `T` would be a new
 # type for every function there is, and Julia would compile each of these again for each.
 function elements(@nospecialize(T::Type))
-    T <: Tuple && return collect(Any, T.parameters)
+    T <: Tuple && return Any[completed(p) for p in T.parameters]
     out = Any[]
     for k in 1:fieldcount(T)
-        F = fieldtype(T, k)
+        F = completed(fieldtype(T, k))
         isfunction(F) ? append!(out, elements(F)) : push!(out, F)
     end
     return out

@@ -24,8 +24,8 @@ function counted(k::Int64)
     tally[2] += k
     return tally[2] + 1
 end
-const SHIELD_H = 2.0                # spelled like the include guard of a file named `shield`
-shielded(x::Float64) = x * SHIELD_H
+const LIB_SHIELDED_H = 2.0          # spelled like the include guard of `shielded.h` in a project named `lib`
+shielded(x::Float64) = x * LIB_SHIELDED_H
 fall(t::Float64) = 0.5 * g * t^2
 turn(x::Float64) = τ * x + frame[2, 2]
 shifted(v::SVector{3,Float64}) = v + w
@@ -54,11 +54,11 @@ check("global", [Case(fall, 2.0), Case(shifted, SVector(1.0, 1.0, 1.0)), Case(sc
     # An include guard is a macro, and would erase a name spelled like it: the guard gives way.
     wr = csource("written", counted)
     @test occursin("\nint64_t tally[3] = {0, 0, 0};", wr) && occursin("extern int64_t tally[3];", wr) && !occursin("const int64_t tally", wr)
-    sh = csource("shield", shielded)
-    @test occursin("#ifndef SHIELD_H_\n#define SHIELD_H_\n", sh) && occursin("static const double SHIELD_H = 2.0;", sh) && occursin("#endif  // SHIELD_H_", sh)
+    sh = csource("shield", shielded; project="lib")
+    @test occursin("#ifndef LIB_SHIELDED_H_\n#define LIB_SHIELDED_H_\n", sh) && occursin("static const double LIB_SHIELDED_H = 2.0;", sh) && occursin("#endif  // LIB_SHIELDED_H_", sh)
     sym = csource("symbolic", turn)
-    @test occursin("static const double tau = 2 * LEGIBLEC_PI;", sym) && occursin("static const double frame[2][2] = {\n    {1.0, 0.0},\n    {0.0, LEGIBLEC_PI},\n};", sym)
-    @test occursin("#define LEGIBLEC_PI 3.141592653589793", sym) && !occursin("LEGIBLEC_E", sym) && occursin("#include \"helper.h\"", sym)
+    @test occursin("static const double tau = 2 * SYMBOLIC_PI;", sym) && occursin("static const double frame[2][2] = {\n    {1.0, 0.0},\n    {0.0, SYMBOLIC_PI},\n};", sym)
+    @test occursin("#define SYMBOLIC_PI 3.141592653589793", sym) && !occursin("SYMBOLIC_E", sym) && occursin("#include \"helper.h\"", sym)
     # Listed by keyword, looked up in `scope`; a struct type on its own, with its docstring.
     vars = csource("listed", Point, plain; g, k, title, origin, scope=@__MODULE__)   # a type before the functions: after one, it reads as an argument type
     @test occursin("const double g = 9.81;", vars) && occursin("\ndouble k = 2.0;", vars)
@@ -69,7 +69,7 @@ check("global", [Case(fall, 2.0), Case(shifted, SVector(1.0, 1.0, 1.0)), Case(sc
     @test occursin("const double q = 3.0;", loose) && occursin("const double width = 3.0;", loose)
     # The macro sets `scope` to where it is written.
     dir = mktempdir()
-    path = @transpile(plain; k, outfile="mac", outpath=dir, split=false)
+    path = @transpile(plain; k, project="mac", outpath=dir, split=false)
     @test occursin("\ndouble k = 2.0;", read(path, String))
     # A definition typed at the REPL transpiles; it just has no source to comment from.
     include_string(@__MODULE__, "replfun(x::Float64) = 2x", "REPL[7]")

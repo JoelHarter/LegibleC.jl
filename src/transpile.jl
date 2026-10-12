@@ -1,10 +1,10 @@
 # The API: targets to method instances, C names, and the output file.
 
 """
-    transpile(target...; outfile="juliatranspiled", outpath=pwd(), split=true) -> path
+    transpile(target...; project="lib", include=true, outpath=pwd(), split=true) -> path
 
 Transpile one or more targets into `outpath/out/`: a `.c` and a `.h` for each function,
-named after it, `<outfile>.h` for callers, which includes them all, `helper.h` and
+named after it, `<project>.h` for callers, which includes them all, `helper.h` and
 `helper.c` with the generated helpers they need. Returns the path of the function's
 file — the paths, in file order, when there are several. Each `target` is one of:
 
@@ -23,16 +23,26 @@ a target that can't be resolved throws an `ArgumentError`.
 
 Options:
 
-- `outfile`: name of the functions file; `.c` is appended if not already present.
+- `project`: the name of the library the output is: the header a caller includes,
+  `<project>.h`, which includes all the others; with `split` off, the two files that
+  hold everything; and the first word of every macro of ours, `LIB_PI`, `LIB_ENERGY_H`,
+  so that two generated libraries keep out of each other's way.
+- `include`: write `<project>.h`, the header that includes every other, so that a caller
+  can include one file. Nothing else is in it. Off, a caller includes the headers it
+  uses. With `split` off there is no other header, and the option does nothing.
 - `helper`: the name of the helper files, `helper.h` and `helper.c` by default — for
   several `transpile` calls into one `out/`, each with helpers of its own to keep.
 - `split`: on unless told. Every function in a file of its own, named after it, listed
-  or not, with its header, and nothing else in it; every struct in a header of its own,
-  the struct a function returns a tuple in included. `<outfile>.h` then holds the globals
-  and includes every other header, so a caller can still include one file; `<outfile>.c`
-  holds the mutable globals, and is written only when there are any. Names that differ
-  only in case, `point` and `Point`, share a file, named by the lowercase one. Off,
-  everything is in `<outfile>.h` and `<outfile>.c`.
+  or not, with its header, and nothing else in it; every struct of yours in a header of
+  its own; a type the C needed and you never named — a tuple held as a value, the struct
+  a tuple is returned in — in the header of the first function or struct that mentions
+  it; the globals in `<project>_common.h`
+  and `<project>_common.c` — the constants as `static const`, the other globals as
+  `extern` with their definitions in the `.c`, and the declarations of C functions called
+  through `ccall`, written only when there are any; and `<project>.h`, which includes
+  every other header, so a caller can still include one file. Names that differ only
+  in case, `point` and `Point`, share a file, named by the lowercase one. Off,
+  everything is in `<project>.h` and `<project>.c`.
 - `outpath`: the folder whose `out/` subfolder receives the files; defaults to
   Julia's current working directory.
 - `templimit`: longest name an intermediate value may be given before its
@@ -44,10 +54,10 @@ Options:
   `Float32`) instead of `%g`. See `doc/io.md`.
 - `posix`: write `pi` and `ℯ` as `M_PI` and `M_E` from `math.h`, which are POSIX
   rather than ISO C and can be missing under a strict `-std=c11` (the helper header
-  then defines them under `#ifndef`). Off, they are `LEGIBLEC_PI` and `LEGIBLEC_E`
-  like every irrational: any `AbstractIrrational` — `Base.MathConstants.catalan`, one
-  of your own by `Base.@irrational` — is a macro named after it, defined in the helper
-  header to 128-bit precision.
+  then defines them under `#ifndef`). Off, they are `LIB_PI` and `LIB_E` — the project's
+  name, then the irrational's — like every irrational: any `AbstractIrrational` —
+  `Base.MathConstants.catalan`, one of your own by `Base.@irrational` — is a macro named
+  after it, defined in the helper header to 128-bit precision.
 - `tempsuffix`: temps carry what they were computed from, `temp1_a_b = a + b`, and an
   unnamed lambda what it captured, `fun3_a_b` (`doc/naming.md`). Off by default: they are
   `temp1`, `temp2`, … and `fun1`, `fun2`, …
@@ -84,7 +94,7 @@ than one signature in a single call, those get the argument types appended
 """
 function transpile(target::Union{Function, Core.MethodInstance, Tuple{Union{Function, Symbol}, Vararg{Union{DataType, Integer}}},
                                  Tuple{typeof(broadcast), Function, Vararg{Union{DataType, Integer}}}, Type, Pair{Symbol, <:Any}, GlobalRef}...;
-                   outfile::AbstractString="juliatranspiled", outpath::AbstractString=pwd(), split::Bool=true,
+                   project::AbstractString="lib", include::Bool=true, outpath::AbstractString=pwd(), split::Bool=true,
                    helper::AbstractString="helper",
                    templimit::Integer=40,
                    # On by default only until dynamic arrays are supported; then it flips
@@ -116,10 +126,12 @@ function transpile(target::Union{Function, Core.MethodInstance, Tuple{Union{Func
     LegibleC.forcing[] = force
     LegibleC.posix[] = posix
     LegibleC.gotos[] = goto
+    LegibleC.project[] = project
     empty!(LegibleC.irrationals)
     local problem
     try
-        return transpiled(target...; outfile, outpath, separate=split, helper=(endswith(helper, ".c") || endswith(helper, ".h") ? helper[1:end-2] : helper), templimit, source, precise, width, suffix=tempsuffix, scope, variables)
+        trim(f) = endswith(f, ".c") || endswith(f, ".h") ? f[1:end-2] : f
+        return transpiled(target...; project=trim(project), umbrella=include, outpath, separate=split, helper=trim(helper), templimit, source, precise, width, suffix=tempsuffix, scope, variables)
     catch e
         # A refusal, a fault already explained (`cfunction`), or the file system's own
         # complaint goes out as it is. Anything else is a mistake of the transpiler's made
@@ -134,6 +146,7 @@ function transpile(target::Union{Function, Core.MethodInstance, Tuple{Union{Func
         LegibleC.c23floattypes[] = false
         LegibleC.posix[] = false
         LegibleC.gotos[] = false
+        LegibleC.project[] = "lib"
         empty!(LegibleC.irrationals)
         LegibleC.booltype[] = Bool
         LegibleC.realtype[] = Float64
@@ -148,7 +161,7 @@ end
 
 `transpile`, with `scope` set to the module the call is written in, so that a variable
 given by keyword is looked up where you wrote it: `@transpile(fall, Point; g, μ,
-outfile="body")`.
+project="body")`.
 """
 macro transpile(args...)
     params = [a for a in args if a isa Expr && a.head === :parameters]
@@ -160,11 +173,14 @@ macro transpile(args...)
     return Expr(:call, GlobalRef(@__MODULE__, :transpile), Expr(:parameters, kws...), esc.(rest)...)
 end
 
-function transpiled(target...; outfile, outpath, separate, helper, templimit, source, precise, width, suffix, scope, variables)
-    # The file names, checked before any work is done on their account.
-    base = endswith(outfile, ".c") ? outfile[1:end-2] : outfile
-    base == helper && throw(ArgumentError("`$helper.c` is the file the generated helpers go to; name the functions' file something else"))
-    for name in (base, helper)
+function transpiled(target...; project, umbrella, outpath, separate, helper, templimit, source, precise, width, suffix, scope, variables)
+    # The file names, checked before any work is done on their account. The globals' file
+    # is named after the project, so several calls into one `out/` each keep their own.
+    base = project
+    common = base * "_common"
+    base == helper && throw(ArgumentError("`$helper.c` is the file the generated helpers go to; name the project something else"))
+    helper == common && throw(ArgumentError("`$common.c` is the file the globals go to; name the helpers' file something else"))
+    for name in (base, helper, common)
         name * ".h" in first.(standard) && throw(ArgumentError("`$name.h` would shadow the standard header <$name.h> for every file compiled with `-I out`; name it something else"))
     end
     # Each instance is paired with its signature: the instance's own argument types,
@@ -266,7 +282,7 @@ function transpiled(target...; outfile, outpath, separate, helper, templimit, so
     end
     dir = joinpath(outpath, "out")
     mkpath(dir)
-    where, order = placement(prog, base, separate, names, helper)
+    where, order = placement(prog, base, separate, umbrella, common, names, functions, helper)
     files = unique(String(mi.def.file) for (mi, _) in instances)   # where a global's line may be
     # The whole program's text, for the macros it uses.
     everything = String[]
@@ -274,10 +290,10 @@ function transpiled(target...; outfile, outpath, separate, helper, templimit, so
     for g in prog.globals; append!(everything, globallines(g, files, source, "")); end
     append!(everything, Base.values(prog.helpers))
     for (_, def) in prog.structs; push!(everything, def); end
-    for (_, def) in prog.tupledefs; push!(everything, def); end
+    for (_, _, def) in prog.tupledefs; push!(everything, def); end
     everything = join(everything, "\n")
     writehelpers(dir, prog, separate ? where : Dict(n => base for n in prog.exported), helper, everything)
-    return writefiles(dir, prog, base, where, order, names, functions, helper, files, source, everything)
+    return writefiles(dir, prog, base, separate, where, order, names, functions, helper, files, source, everything)
 end
 
 
@@ -389,7 +405,7 @@ function audit(prog::Program, fixed, avoid, nomacro)
     for m in keys(irrationals)
         m in theirs && !(m in nomacro) && (push!(nomacro, m); again = true)
     end
-    for (n, _) in prog.tupledefs
+    for (n, _, _) in prog.tupledefs
         n in union(prog.names, structs) && !(n in nomacro) && (push!(nomacro, n); again = true)
     end
     return again
@@ -398,7 +414,7 @@ end
 # Every name at file scope in the output: functions and globals, helpers, foreign
 # wrappers, struct and tuple typedefs, and the macros for irrationals.
 filescope(prog::Program) = union(prog.names, keys(prog.helpers), keys(prog.foreign), Set(structname(T) for (T, _) in prog.structs),
-                                 Set(first.(prog.tupledefs)), keys(irrationals))
+                                 Set(t[1] for t in prog.tupledefs), keys(irrationals))
 
 # A global with its value: its Julia line above it, as a statement's is, when the source
 # is being copied — its trailing `# note` riding along, otherwise after the declaration
@@ -538,7 +554,7 @@ end
 
 # `helper.h` and `helper.c`: everything generated that the user's functions need —
 # `add_3`, `solve_4x4_4`, `powi`, `printarray_F64`. The header holds what the helpers
-# need — standard includes, typedefs — the macros the whole program uses (`LEGIBLEC_PI`;
+# need — standard includes, typedefs — the macros the whole program uses (`LIB_PI`;
 # `everything` is the program's text), plus prototypes of the out-of-line helpers and
 # the inline ones themselves; the `.c` holds the out-of-line ones, and is written only
 # when there is one. A struct a helper mentions is defined here, unless `external`
@@ -557,7 +573,7 @@ function writehelpers(dir, prog::Program, external, helper, everything)
     text = join((prog.helpers[n] for n in order), "\n")
     inline = [n for n in order if isinline(prog.helpers[n])]
     outline = [n for n in order if !isinline(prog.helpers[n])]
-    guard = guardname("LEGIBLEC_" * uppercase(identifier(helper)) * "_H", everything)
+    guard = guardname(macroprefix() * uppercase(identifier(helper)) * "_H", everything)
     htext = String[]
     append!(htext, used); isempty(used) || push!(htext, "")
     headers = String[]
@@ -593,26 +609,34 @@ end
 
 # Which file each C name goes to, and the files in order. In one file: everything but
 # the helpers, and a struct the helpers mention goes with them. Split: every function
-# in a file named after it, listed or not; every struct in a header of its own; a
-# function's return struct with that function; the globals and the foreign wrappers
-# in `<base>`. Names that differ only in case share a file — `point` and `Point`,
-# which one file system in three would merge anyway — named in lowercase.
-function placement(prog::Program, base, split::Bool, names, helper)
+# in a file named after it, listed or not; every struct of the author's in a header of
+# its own; a type the C needed and the Julia never named — a return tuple's struct with
+# the function whose return it is; a tuple held as a value, what a function captured,
+# beside the first struct or function of the author's that mentions it, moved when another
+# comes first; the globals and the foreign wrappers in `<common>`; and `<base>`,
+# which holds nothing of its own and includes every other header, when asked for
+# (`umbrella`). Names that differ only in case share a file — `point` and `Point`, which
+# one file system in three would merge anyway — named in lowercase.
+function placement(prog::Program, base, split::Bool, umbrella::Bool, common, names, functions, helper)
     where = Dict{String, String}()
     helpertext = join(values(prog.helpers), "\n")
     for n in names; where[n] = split ? n : base; end
-    for g in prog.globals; where[g.cname] = base; end
-    for n in keys(prog.foreign); where[n] = base; end
+    for g in prog.globals; where[g.cname] = split ? common : base; end
+    for n in keys(prog.foreign); where[n] = split ? common : base; end
+    # The author's structs, then the author's functions by prototype and body: whichever
+    # first mentions a type of the C's own gives it its home.
+    authors = [(structname(T), def) for (T, def) in prog.structs if isstruct(T)]
+    append!(authors, (n, f[1] * "\n" * f[3]) for (n, f) in zip(names, functions))
+    home(n) = (k = findfirst(a -> mentions(a[2], n), authors); k === nothing ? n : authors[k][1])
     for (T, _) in prog.structs
         n = structname(T)
-        where[n] = split ? n : mentions(helpertext, n) ? helper : base
+        where[n] = split ? (isstruct(T) ? n : home(n)) : mentions(helpertext, n) ? helper : base
     end
-    # A function's file holds the function and nothing else: the struct it returns has a
-    # header of its own, as any struct has, since another function may come to use it.
-    for (n, _) in prog.tupledefs
-        where[n] = split ? n : base
+    for (n, owner, _) in prog.tupledefs
+        where[n] = split ? owner : base
     end
-    files = [base; [where[n] for n in names]; [where[structname(T)] for (T, _) in prog.structs]; [where[n] for (n, _) in prog.tupledefs]]
+    files = [split && !umbrella ? String[] : [base]; [where[g.cname] for g in prog.globals]; [where[n] for n in keys(prog.foreign)];
+             [where[n] for n in names]; [where[structname(T)] for (T, _) in prog.structs]; [where[n] for (n, _, _) in prog.tupledefs]]
     filter!(!=(helper), files)
     canon = Dict(key => (spellings = unique(f for f in files if lowercase(f) == key); length(spellings) == 1 ? only(spellings) : key)
                  for key in unique(lowercase.(files)))
@@ -640,7 +664,7 @@ function guardname(guard, everything)
     return guard
 end
 
-function writefiles(dir, prog::Program, base, where, order, names, functions, helper, files, source::Bool, everything)
+function writefiles(dir, prog::Program, base, split::Bool, where, order, names, functions, helper, files, source::Bool, everything)
     declared(g::Global, prefix) = globallines(g, files, source, prefix; written=(g.mod, g.name) in prog.written, warn=true)
     definition = Dict(zip(names, (f[3] for f in functions)))
     # What each file defines, for the includes: functions and foreign wrappers are looked
@@ -652,13 +676,13 @@ function writefiles(dir, prog::Program, base, where, order, names, functions, he
     helperstructs = [structname(T) for (T, _) in prog.structs if where[structname(T)] == helper]
     needs(text, f) = any(mentions(text, n; call) for (n, call) in entities[f])
     inheader(g::Global) = g.constant && !(globaltype(g.value) <: AbstractString)
-    umbrella = length(order) > 1
+    umbrella = split && base in order        # `<base>.h` includes every other header
     paths = String[]
     for file in order
         fns = [k for k in 1:length(names) if where[names[k]] == file]
         gls = [g for g in prog.globals if where[g.cname] == file]
         sts = [def for (T, def) in prog.structs if where[structname(T)] == file]
-        tds = [(n, def) for (n, def) in prog.tupledefs if where[n] == file]
+        tds = [(n, def) for (n, _, def) in prog.tupledefs if where[n] == file]
         fgn = [prog.foreign[n] for n in sort!(collect(keys(prog.foreign))) if where[n] == file]
         # The header: typedefs, then the globals, then each prototype under its comment,
         # with a return struct right above the first prototype that returns it.
@@ -666,7 +690,7 @@ function writefiles(dir, prog::Program, base, where, order, names, functions, he
         append!(body, sts)
         ntypes = length(body)                    # the typedefs come first: see the includes below
         # A C function called through `ccall` is declared where every file can see it.
-        umbrella && append!(body, fgn)
+        split && append!(body, fgn)
         protos = String[]
         done = Set{String}()
         for k in fns
@@ -689,7 +713,10 @@ function writefiles(dir, prog::Program, base, where, order, names, functions, he
         isempty(gls) || push!(body, "")
         append!(body, protos)
         htext = join(body, "\n")
-        guard = guardname(uppercase(identifier(file)) * "_H", everything)
+        # `LIB_ENERGY_H`; the project's own header is `LIB_H`, as a C author would write it,
+        # and `lib_common.h`, named with the project already, is `LIB_COMMON_H`.
+        own = lowercase(file) == lowercase(base) ? "H" : startswith(lowercase(file), lowercase(base) * "_") ? uppercase(identifier(file[length(base)+2:end])) * "_H" : uppercase(identifier(file)) * "_H"
+        guard = guardname(macroprefix() * own, everything)
         header = ["#ifndef $guard", "#define $guard", ""]
         n0 = length(header)
         for h in includes(htext); push!(header, "#include <$h>"); end
@@ -719,7 +746,7 @@ function writefiles(dir, prog::Program, base, where, order, names, functions, he
             append!(cglobals, lines)
         end
         defs = [functions[k][3] for k in fns]
-        umbrella && (fgn = String[])              # declared in the header
+        split && (fgn = String[])                 # declared in the header
         isempty(cglobals) && isempty(defs) && isempty(fgn) && continue
         ctext = join([cglobals; fgn; defs], "\n")
         path = joinpath(dir, file * ".c")
@@ -831,8 +858,14 @@ method above (and would otherwise be ambiguous between the two).
 transpile(f::Function, T1::DataType, T::Union{DataType, Integer}...; kw...) = transpile((f, T1, T...); kw...)
 
 # `SMatrix{3,3,Float64}` as people write it leaves out the last parameter, the number of
-# elements, which the size already says. So does `MMatrix{3,3,Float64}`. It is filled in.
-function completed(P)
+# elements, which the size already says. So does `MMatrix{3,3,Float64}`. It is filled in,
+# in a signature, a struct's field, or an element of a tuple, where Julia itself would
+# leave the type abstract: there is only one concrete type it can mean.
+function completed(@nospecialize(P))
+    if P isa DataType && P <: Tuple && !isconcretetype(P) && all(p -> p isa Type, P.parameters)
+        done = Any[completed(p) for p in P.parameters]
+        return all(isconcretetype, done) ? Tuple{done...} : P
+    end
     P isa UnionAll || return P
     u = Base.unwrap_unionall(P)
     u isa DataType && u <: StaticArrays.StaticArray && length(u.parameters) == 4 || return P

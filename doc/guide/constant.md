@@ -19,7 +19,7 @@ static const double c = 2.99792458e8;
 It lives in the header, so every file that includes it can fold it. An array
 is written with its initializer, a matrix one row per line, and the
 initializer is the Julia expression where a static initializer can hold it,
-so `const τ = 2π` is `2 * LEGIBLEC_PI`. A typed global, `k::Float64 = 2.0`,
+so `const τ = 2π` is `2 * LIB_PI`. A typed global, `k::Float64 = 2.0`,
 is a plain global in the `.c` and `extern` in the header. See
 [target.md](target.md).
 
@@ -37,21 +37,21 @@ value, `transpile(bump; counter = 0)`.
 
 ## A macro constant is an irrational
 
-`π` is not `3.141592653589793` in the C; it is `LEGIBLEC_PI`, defined once
+`π` is not `3.141592653589793` in the C; it is `LIB_PI`, defined once
 in the helper header:
 
 ```c
-#define LEGIBLEC_PI 3.1415926535897932384626433832795028  // π to 128-bit precision
+#define LIB_PI 3.1415926535897932384626433832795028  // π to 128-bit precision
 ```
 
 The rule behind it is general: any value of Julia's `AbstractIrrational`
-type is written as a macro named `LEGIBLEC_` plus its symbol's C spelling in
-capitals, defined to 128-bit precision, which the C compiler rounds to the
-same double Julia uses. `ℯ` is `LEGIBLEC_E`, `Base.MathConstants.γ` is
-`LEGIBLEC_GAMMA`, `catalan` is `LEGIBLEC_CATALAN`. Only the ones the output
+type is written as a macro named by the project (`LIB_` unless the `project`
+option says otherwise) plus its symbol's C spelling in capitals, defined to
+128-bit precision, which the C compiler rounds to the same double Julia uses. `ℯ` is `LIB_E`, `Base.MathConstants.γ` is
+`LIB_GAMMA`, `catalan` is `LIB_CATALAN`. Only the ones the output
 uses are defined, and a file that uses one includes the helper header. Two
-symbols that spell the same, `φ` and `ϕ`, get `LEGIBLEC_PHI` and
-`LEGIBLEC_PHI_`. (The `posix` option writes `M_PI` and `M_E` for π and ℯ
+symbols that spell the same, `φ` and `ϕ`, get `LIB_PHI` and
+`LIB_PHI_`. (The `posix` option writes `M_PI` and `M_E` for π and ℯ
 instead; POSIX names nothing else.)
 
 The name follows the symbol, never a value. A `3.141592653589793` you typed
@@ -72,7 +72,7 @@ Base.@irrational ħ big"1.054571817e-34"
 The two-argument form computes the `Float64` from the big value; the
 three-argument form takes it explicitly and Julia checks the two agree. From
 then on `root2` behaves like `π` everywhere in Julia and is
-`LEGIBLEC_ROOT2` in the C, defined to 128-bit precision.
+`LIB_ROOT2` in the C, defined to 128-bit precision.
 
 Two things to know. Julia's docstring for `Base.@irrational` warns that it is
 meant for Base, because it makes a type `Irrational{:root2}` regardless of
@@ -91,7 +91,7 @@ Base.:(==)(::Root2, ::Root2) = true
 Base.hash(::Root2, h::UInt) = hash(:root2, h)
 ```
 
-which comes out the same, `LEGIBLEC_ROOT2`, named after the type.
+which comes out the same, `LIB_ROOT2`, named after the type.
 
 ## Don't feel bad about the name
 

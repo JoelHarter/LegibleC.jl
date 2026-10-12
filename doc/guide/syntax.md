@@ -8,16 +8,16 @@ listed here is an error at transpile time, never silently wrong C.
 ## Calling the transpiler
 
 ```julia
-transpile(f, g, (h, Float64, 3, Float64, 2, 3); outfile="name", outpath=dir)
+transpile(f, g, (h, Float64, 3, Float64, 2, 3); project="name", outpath=dir)
 ```
 
 A target is a function with one concrete method, a `MethodInstance`, or a
 tuple of a function and argument types — where a type followed by integers is
-an array of that element type and size. Options: `outfile`, `outpath`,
+an array of that element type and size. Options: `project`, `outpath`,
 `templimit`, `source` (on), `precise`, `posix`, `width`
 (100), `spelling` (your own C names for characters, `../naming.md`). An
-`out/` folder comes out: the functions in `<outfile>.c`, the helpers in
-`helper.h`/`.c` — see `start.md`.
+`out/` folder comes out: every function in a file of its own, `<project>.h`
+including them all, the helpers in `helper.h`/`.c` — see `start.md`.
 
 ## Functions
 
@@ -80,7 +80,7 @@ both languages, read-only.
 | `&&`, `\|\|`, `c ? x : y` | yes, in conditions and as values |
 | `sqrt sin cos tan asin acos atan sinh cosh tanh exp exp2 expm1 log log2 log10 log1p cbrt floor ceil trunc round hypot copysign abs atan(y, x)` | yes; the `f` family on `Float32` |
 | `min`, `max` on floats | yes, as the helpers `minN` and `maxN`: Julia's give NaN when either argument is one, where C's `fmin` and `fmax` would give the other number |
-| `isodd`, `iseven`, `inv(x)`, `deg2rad`, `rad2deg`, `>>>`, `eps(x)`, `ifelse(c, a, b)` | yes, each as the C expression it is: `k % 2 != 0`, `1.0 / x`, `x * (LEGIBLEC_PI / 180)` |
+| `isodd`, `iseven`, `inv(x)`, `deg2rad`, `rad2deg`, `>>>`, `eps(x)`, `ifelse(c, a, b)` | yes, each as the C expression it is: `k % 2 != 0`, `1.0 / x`, `x * (LIB_PI / 180)` |
 | `gcd`, `lcm`, `isqrt`; `sind`, `cosd`, `tand` | yes, as a small helper each; the degree functions are exact at the multiples of 90, as Julia's are |
 | `zero(x)`, `one(x)` | yes |
 | `s, c = sincos(x)`, `lo, hi = minmax(a, b)` | yes, as the two values; only destructured |

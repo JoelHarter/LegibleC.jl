@@ -31,7 +31,7 @@ check("operator", [Case(lenb, SVector(1.0, 2.0, 3.0), SVector(1.0, 1.0, 1.0)), C
     @test occursin("add_3(a, b, temp1);", src) && occursin("Pair2 neg_Pair2(Pair2 p)", src)
     # Split: the operator's function has a file of its own.
     dir = mktempdir()
-    paths = transpile((+, Float64, 3, Float64, 3), lenb; outfile="lib", split=true, outpath=dir, scope=@__MODULE__)
+    paths = transpile((+, Float64, 3, Float64, 3), lenb; project="lib", split=true, outpath=dir, scope=@__MODULE__)
     @test basename.(paths) == ["add_3.c", "lenb.c"] && occursin("#include \"add_3.h\"", read(joinpath(dir, "out", "lenb.c"), String))
     @test_throws ArgumentError csource("bare", *)
     # A broadcast is a symbol beginning with `.`: an operator's, or a function's.

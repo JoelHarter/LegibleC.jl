@@ -296,7 +296,7 @@ settled so and **the program is built again**. When neither is spelled that
 way (`φ` and `ϕ`, both `phi`), there is no rule to choose by, and a silent `_`
 on one of two interface names is not a choice to make for the author: it is
 refused, naming both. A macro of ours gives way to a name of the author's:
-beside a global `LEGIBLEC_PI`, π is `LEGIBLEC_PI_`. An include guard, being a
+beside a global `LIB_PI`, π is `LIB_PI_`. An include guard, being a
 macro, is checked against every word of the program.
 
 **Helper names are reserved by their shape.** A function of the author's

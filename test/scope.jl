@@ -190,8 +190,8 @@ end
 omega(x::Float64) = 3.0 * x
 φ(x::Float64) = x + 1.0
 ϕ(x::Float64) = x + 2.0
-const LEGIBLEC_PI = 3.0                              # the author's own name, which the macro for π gives way to
-ownpi(x::Float64) = x * π + LEGIBLEC_PI
+const LIB_PI = 3.0                              # the author's own name, which the macro for π gives way to
+ownpi(x::Float64) = x * π + LIB_PI
 # Found by setting agents to write probes against the new naming (2026-09-21).
 const temp1 = 100.0                                  # globals named as the transpiler names its temps
 const temp1 = 1000.0
@@ -251,8 +251,8 @@ end
 function pishadow(r::Float64)                        # a local named like the macro, which rewrites it wherever it stands
     s = π * r
     for k in 1:2
-        LEGIBLEC_E = 3.0 + k
-        s += LEGIBLEC_E * r
+        LIB_E = 3.0 + k
+        s += LIB_E * r
     end
     return s + ℯ
 end
@@ -263,10 +263,10 @@ function step(x::Float64)
     return xn, vn
 end
 stepped(x::Float64) = ((p, q) = step(x); step_t(x).a + p + q)
-struct Holder; LEGIBLEC_GAMMA::Float64; end          # a member named like a macro the program uses
-held(h::Holder) = h.LEGIBLEC_GAMMA * Base.MathConstants.γ
-const turnonly = 2π                                  # π met only in a global's initializer, beside the author's `LEGIBLEC_PI`
-initonly(x::Float64) = x * turnonly + LEGIBLEC_PI
+struct Holder; LIB_GAMMA::Float64; end          # a member named like a macro the program uses
+held(h::Holder) = h.LIB_GAMMA * Base.MathConstants.γ
+const turnonly = 2π                                  # π met only in a global's initializer, beside the author's `LIB_PI`
+initonly(x::Float64) = x * turnonly + LIB_PI
 module A; const c = 1.5; f(x::Float64) = x + c; end  # one name in a module, its sibling, and the module around them
 module B; const c = 2.5; f(x::Float64) = x * c; end
 const c = 4.0
@@ -305,12 +305,12 @@ check("scope", cases)
         @test occursin(r"double omega\(double x\) \{\n(    //[^\n]*\n)*    return 3\.0 \* x;", both) && occursin(r"double omega_\(double x\) \{\n(    //[^\n]*\n)*    return 2\.0 \* x;", both)
     end
     @test_throws ArgumentError csource("scopetie", φ, ϕ)
-    own = csource("scopeownpi", ownpi)
-    @test occursin("static const double LEGIBLEC_PI = 3.0;", own) && occursin("#define LEGIBLEC_PI_ 3.14159", own) && occursin("return x * LEGIBLEC_PI_ + LEGIBLEC_PI;", own)
-    ours = csource("scopeours", stepped, held, initonly, three)
+    own = csource("scopeownpi", ownpi; project="lib")
+    @test occursin("static const double LIB_PI = 3.0;", own) && occursin("#define LIB_PI_ 3.14159", own) && occursin("return x * LIB_PI_ + LIB_PI;", own)
+    ours = csource("scopeours", stepped, held, initonly, three; project="lib")
     @test occursin("} step_t;", ours) && occursin("} step_t_;", ours)                       # the author's keeps the name, the tuple's gives way
-    @test occursin("double LEGIBLEC_GAMMA;", ours) && occursin("#define LEGIBLEC_GAMMA_ ", ours)
-    @test occursin("static const double turnonly = 2 * LEGIBLEC_PI_;", ours)
+    @test occursin("double LIB_GAMMA;", ours) && occursin("#define LIB_GAMMA_ ", ours)
+    @test occursin("static const double turnonly = 2 * LIB_PI_;", ours)
     @test occursin("static const double A_c = 1.5;", ours) && occursin("static const double B_c = 2.5;", ours) && occursin("static const double c = 4.0;", ours)
     ls = csource("scopelets", nestedlets, oneline, selfinit)
     @test occursin("        {\n            double t = x * k;", ls) && occursin("            {\n                double u = t + 1.0;", ls)   # nested as written

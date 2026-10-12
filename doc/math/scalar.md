@@ -71,8 +71,8 @@ on one side or the other: `Int128` (a compiler extension in C), `Float16`
 | `sqrt sin cos tan asin acos atan sinh cosh tanh exp exp2 expm1 log log2 log10 log1p cbrt floor ceil trunc hypot copysign` | the same, from `math.h`; the `f` family on a `Float32` (`sqrtf`, `fabsf`, `powf`) | |
 | `'a'`, `c + 1`, `c - 'a'`, `Int(c)`, `Char(n)`, `isdigit(c)`, `uppercase(c)` | `'a'`, `c + 1`, `c - 'a'`, `(int64_t)c`, `(char)n`, `isdigit(c)`, `(char)toupper(c)` | a `Char` is an ASCII `char`; the `ctype.h` classes agree with Julia's on all 128, except `ispunct`, which is written with the nine characters Julia calls symbols taken out |
 | `s == "abc"`, `length(s)`, `ncodeunits(s)`, `isempty(s)`, `s[i]` | `strcmp(s, "abc") == 0`, `utf8len(s)`, `(int64_t)strlen(s)`, `s[0] == '\0'`, `s[i - 1]` | a `String` is `const char *`, UTF-8 in both languages |
-| `pi`, `ℯ`, `Base.MathConstants.γ`, `catalan`, your own `Base.@irrational` | `LEGIBLEC_PI`, `LEGIBLEC_E`, `LEGIBLEC_GAMMA`, `LEGIBLEC_CATALAN`, `LEGIBLEC_<NAME>` | any `AbstractIrrational`, by its symbol: a macro named after it, defined in the helper header to 128-bit precision, which the compiler rounds to the nearest double; the `posix` option writes POSIX's `M_PI` and `M_E` for π and ℯ instead |
-| `π * A`, `v / ℯ`, `π .* v` | `mul_s_2x2(LEGIBLEC_PI, A, out)`, `(float)LEGIBLEC_PI` beside a `Float32` array | an irrational has no type of its own; Julia gives it the one it meets, the array's floating element type, or `Float64` beside integers |
+| `pi`, `ℯ`, `Base.MathConstants.γ`, `catalan`, your own `Base.@irrational` | `LIB_PI`, `LIB_E`, `LIB_GAMMA`, `LIB_CATALAN`, `LIB_<NAME>` | any `AbstractIrrational`, by its symbol: a macro named after it, defined in the helper header to 128-bit precision, which the compiler rounds to the nearest double; the `posix` option writes POSIX's `M_PI` and `M_E` for π and ℯ instead |
+| `π * A`, `v / ℯ`, `π .* v` | `mul_s_2x2(LIB_PI, A, out)`, `(float)LIB_PI` beside a `Float32` array | an irrational has no type of its own; Julia gives it the one it meets, the array's floating element type, or `Float64` beside integers |
 | `factorial(n)` of an integer | `factorial(n)`, a small helper that looks it up | a table of 0! to 20!, the last that fits 64 bits, as Julia's is. Outside it Julia throws, and the C stops with the same words |
 | `gamma(x)`, `loggamma(x)`, `erf(x)`, `erfc(x)` from `SpecialFunctions` | `tgamma(x)`, `lgamma(x)`, `erf(x)`, `erfc(x)` from `math.h`; the `f` family on a `Float32` | known by name, the package not being one the transpiler loads |
 | `abs(x)` | `fabs(x)`; `llabs(x)` for `Int64`, `abs(x)` for `Int32` (`stdlib.h`) | |
@@ -82,7 +82,7 @@ on one side or the other: `Int128` (a compiler extension in C), `Float16`
 | `exponent(x)`, `significand(x)` | `(int64_t)ilogb(x)`, `mantissa(x)`, a small helper over `frexp` | the C library has a `significand` of its own on some systems, so the helper isn't called that |
 | `log(b, x)`, `hypot(x, y, z)`, `fourthroot(x)` | `log(x) / log(b)`, `hypot3(x, y, z)`, `sqrt(sqrt(x))` | Julia's own definitions; `hypot3` scales by the largest so nothing overflows on the way |
 | `sec csc cot sech csch coth`, `asec acsc acot asech acsch acoth` | `1.0 / cos(x)`, …; `acos(1.0 / x)`, … | each is `inv` of the function it is named for |
-| `asind acosd atand`, `atand(y, x)`, `secd cscd cotd` | `asin(x) * (180 / LEGIBLEC_PI)`, …; `1.0 / cosd(x)`, … | |
+| `asind acosd atand`, `atand(y, x)`, `secd cscd cotd` | `asin(x) * (180 / LIB_PI)`, …; `1.0 / cosd(x)`, … | |
 | `sign(x)`, `abs2(x)`, `iszero`, `isone`, `isinteger`, `ispow2(n)` | `x > 0 ? 1.0 : x < 0 ? -1.0 : x`, `x * x`, `x == 0`, `x == 1`, `x - trunc(x) == 0`, `n > 0 && (n & (n - 1)) == 0` | the sign of a float keeps a zero's sign and a NaN |
 | `clamp(x, lo, hi)` | `x > hi ? hi : x < lo ? lo : x` | |
 | `flipsign(x, y)`, `copysign(x, y)` on integers | `y < 0 ? -x : x`, `(x < 0) != (y < 0) ? -x : x` | |

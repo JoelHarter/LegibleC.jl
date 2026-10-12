@@ -102,7 +102,7 @@ same for your own code:
 
 ```julia
 using LegibleC
-transpile(f, g; outfile="name")
+transpile(f, g; project="name")
 ```
 
 ## What you get
@@ -181,17 +181,18 @@ be read by a person who didn't write it.
 ```julia
 ] dev /path/to/LegibleC        # or: ] add https://github.com/JoelHarter/LegibleC
 using LegibleC
-transpile(f, g, (h, Float64, 3, Float64, 2, 3); outfile="name", outpath=dir)
+transpile(f, g, (h, Float64, 3, Float64, 2, 3); project="name", outpath=dir)
 ```
 
 A target is a function with one concrete method, or a function with its
 argument types spelled out, where a type followed by integers is an array of
 that element type and size. Arrays are `StaticArrays` types, or `Array`s
 given a size in the call. An `out/` folder comes out: a `.c` and a `.h` for
-every function, named after it, a header for every struct, `<outfile>.h` for
-callers, which includes them all, and `helper.h` and `helper.c` with
+every function, named after it, a header for every struct, `<project>_common.h` for
+the constants and globals, `<project>.h` for callers, which includes them all,
+and `helper.h` and `helper.c` with
 the generated helpers they need — and anything a listed function calls
-comes with it. With `split=false`, it is all in `<outfile>.h` and `<outfile>.c`. Constants a function reads come along too, and any you list
+comes with it. With `split=false`, it is all in `<project>.h` and `<project>.c`. Constants a function reads come along too, and any you list
 by keyword, `transpile(f; g, μ)`; `@transpile` does the same from inside a
 module. `transpile` and `@transpile` are the package's only exported names,
 so your own functions can be named anything.

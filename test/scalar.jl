@@ -72,14 +72,14 @@ check("scalar", [Case(arith, 1.0, 2.0, 3.0), Case(unary, 7), Case(nary, 1.0, 2.0
     src = csource("scalartext", math32, fmod_, pie, irrationals)
     @test occursin("sqrtf(x) + fabsf(-x) + maxNF32(x, 1.0f) + powf(x, 0.5f) + expf(x) + rintf(x)", src) && occursin("+ fmodf(x, 0.7f);", src)   # float math is the `f` family
     @test occursin("return modulo(a, b);", src) && occursin("static inline double modulo(double x, double y) {", src) && occursin("    double r = fmod(x, y);", src)   # Julia 1.13 puts a rule for an infinite divisor first
-    @test occursin("return x * LEGIBLEC_PI + LEGIBLEC_E;", src) && !occursin("M_PI", src)   # π and ℯ are our own macros, defined in the file
+    @test occursin("return x * SCALARTEXT_PI + SCALARTEXT_E;", src) && !occursin("M_PI", src)   # π and ℯ are our own macros, defined in the file
     # Every irrational is a macro named after it, to 128-bit precision, in the helper header.
-    @test occursin(r"#define LEGIBLEC_E 2\.718281828459045\d+  // ℯ to 128-bit precision\n#define LEGIBLEC_GAMMA 0\.577215664901532\d+  // γ to 128-bit precision\n#define LEGIBLEC_PI 3\.141592653589793\d+  // π to 128-bit precision\n#define LEGIBLEC_TWOPI 6\.283185307179586\d+  // twopi to 128-bit precision\n", src)
-    @test occursin("#define LEGIBLEC_CATALAN 0.915965594177219", src) && occursin("return x * LEGIBLEC_CATALAN + LEGIBLEC_GAMMA - LEGIBLEC_TWOPI;", src)
+    @test occursin(r"#define SCALARTEXT_E 2\.718281828459045\d+  // ℯ to 128-bit precision\n#define SCALARTEXT_GAMMA 0\.577215664901532\d+  // γ to 128-bit precision\n#define SCALARTEXT_PI 3\.141592653589793\d+  // π to 128-bit precision\n#define SCALARTEXT_TWOPI 6\.283185307179586\d+  // twopi to 128-bit precision\n", src)
+    @test occursin("#define SCALARTEXT_CATALAN 0.915965594177219", src) && occursin("return x * SCALARTEXT_CATALAN + SCALARTEXT_GAMMA - SCALARTEXT_TWOPI;", src)
     root = csource("rooted", rooted)
-    @test occursin("return x * LEGIBLEC_ROOT2;", root) && occursin("#define LEGIBLEC_ROOT2 1.41421356237309504880168872420969798  // Root2 to 128-bit precision", root) && !occursin("typedef", root)
+    @test occursin("return x * ROOTED_ROOT2;", root) && occursin("#define ROOTED_ROOT2 1.41421356237309504880168872420969798  // Root2 to 128-bit precision", root) && !occursin("typedef", root)
     phi = csource("phis", phis)
-    @test occursin("return x * LEGIBLEC_PHI + LEGIBLEC_PHI_;", phi) && occursin("#define LEGIBLEC_PHI 1.61803398874989484820458683436563816  // φ to 128-bit precision\n#define LEGIBLEC_PHI_ 1.5  // ϕ to 128-bit precision", phi)
+    @test occursin("return x * PHIS_PHI + PHIS_PHI_;", phi) && occursin("#define PHIS_PHI 1.61803398874989484820458683436563816  // φ to 128-bit precision\n#define PHIS_PHI_ 1.5  // ϕ to 128-bit precision", phi)
     # `posix`: the POSIX names, not ISO C; a file that uses one defines it if <math.h> didn't (glibc under -std=c11).
     posix = csource("posix", pie; posix=true)
     @test occursin("return x * M_PI + M_E;", posix) && occursin("#include <math.h>", posix)
@@ -202,7 +202,7 @@ end
     src = csource("idiomtext", parity, recip, angles, shifts, gap, choose, least)
     @test occursin("(k % 2 != 0 ? 1 : 0) + ((k + 1) % 2 == 0 ? 10 : 0)", src)
     @test occursin("return 1.0 / x + 1.0 / k + 1.0 / (x + 1.0);", src)
-    @test occursin("d * (LEGIBLEC_PI / 180)", src) && occursin("* (180 / LEGIBLEC_PI)", src)
+    @test occursin("d * (IDIOMTEXT_PI / 180)", src) && occursin("* (180 / IDIOMTEXT_PI)", src)
     @test occursin("shru(a, n) + (int64_t)((uint64_t)a >> 3)", src)      # a count that could be anything goes through Julia's rule; a literal in range is C's shift
     @test occursin("return ulp(x) + ulp(2.0 * x) + ulp(x * x + 1.0);", src)      # a helper: the gap is still finite at the largest float
     @test occursin("(c ? a : b) + (a > b ? a - b : b - a)", src)
@@ -213,7 +213,7 @@ end
     @test occursin("fprintf(stderr, \"ERROR: much too big: %lld for %g\\n\", (long long)n, x);", src)
     @test occursin("if (n == 7) {\n        fprintf(stderr, \"AssertionError: seven\\n\");", src)      # `@assert c`: the opposite test, no empty branch
     @test occursin("if (x == 7.0) {\n        fprintf(stderr, \"AssertionError: x != 7.0\\n\");", src)
-    @test occursin("LEGIBLEC_E", src) && occursin("x * LEGIBLEC_PI", src)
+    @test occursin("GUARDEDTEXT_E", src) && occursin("x * GUARDEDTEXT_PI", src)
     @test occursin("is only available destructured", sprint(showerror, try csource("keptpair", keptpair) catch e; e end))
 end
 # Every refusal leaves the same way: what it is, then the function, the file and line, and
@@ -574,7 +574,7 @@ ufloor(a::Int, b::Int) = fld(a, b) + 10 * cld(a, b) + 100 * mod1(a, b) + 1000 * 
     @test occursin("isfinite(x) && isfinite(y) && fabs(x - y) <= 1.4901161193847656e-8 * fmax(fabs(x), fabs(y))", src)
     @test occursin("(x > 0 ? 1.0 : x < 0 ? -1.0 : x) + x * x", src) && occursin("return (int64_t)ilogb(x) + mantissa(x);", src)
     @test occursin("1.0 / cos(x)", src) && occursin("acos(1.0 / (x + 2))", src) && occursin("fma(x, y, 1.0) + (x * y + 2.0) + hypot3(x, y, 3.0)", src) && occursin("ldexp(x, 3)", src)
-    @test occursin("nextafter(x, INFINITY)", src) && occursin("nextafter(x, -INFINITY)", src) && occursin("asin(x / 40) * (180 / LEGIBLEC_PI)", src) && occursin("1.0 / cosd(x)", src)
+    @test occursin("nextafter(x, INFINITY)", src) && occursin("nextafter(x, -INFINITY)", src) && occursin("asin(x / 40) * (180 / EVERYDAY_PI)", src) && occursin("1.0 / cosd(x)", src)
 end
 
 # `sinpi` and its kin: written as `sin(π * x)` the product is rounded before the sine sees it,
@@ -593,7 +593,7 @@ vsinpi32(x::Float32) = sinpi(x) + cospi(x)
     @test occursin("return sin_pi(x);", src) && occursin("return tan_pi(x);", src) && occursin("return sinc(x);", src) && occursin("sin_piF32(x) + cos_piF32(x)", src)
     # The harness lets a tiny answer be a little off; these are held to the last digits.
     dir = mktempdir()
-    path = Main.LegibleC.transpile(vsinpi, vcospi; outfile="tight", outpath=dir, scope=@__MODULE__)
+    path = Main.LegibleC.transpile(vsinpi, vcospi; project="tight", outpath=dir, scope=@__MODULE__)
     out = dirname(path isa AbstractString ? path : path[1])
     tight = [1000000.25, 1.0000000001, 0.9999999999, 123456.789, 0.1, 7.7, 1e-8]
     write(joinpath(dir, "main.c"), "#include <stdio.h>\n#include \"tight.h\"\nint main(void) { double xs[] = {" * join(repr.(tight), ", ") *

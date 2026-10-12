@@ -2,10 +2,10 @@
 
 How to call the generated C: what each Julia type becomes on the C side.
 
-Include `<outfile>.h`, compile `out/*.c` with your own files, and call.
-Every function has a file and a header of its own, and `<outfile>.h` includes
+Include `<project>.h`, compile `out/*.c` with your own files, and call.
+Every function has a file and a header of its own, and `<project>.h` includes
 them all, so including that one is enough. With `split=false` everything is
-in `<outfile>.h` and `<outfile>.c`.
+in `<project>.h` and `<project>.c`.
 
 **Scalars** are what they look like: `double`, `int64_t`, `bool`, `char`.
 A scalar result is the return value.
