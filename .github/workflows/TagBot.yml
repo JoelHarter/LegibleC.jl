@@ -1,7 +1,8 @@
-# When a release is merged into the General registry, the JuliaTagBot app comments here
-# and this workflow tags the registered commit (v0.1.0, ...) and opens a GitHub release
-# for it, so that a tag always points at exactly what the registry serves. It needs the
-# JuliaTagBot app installed on the repository; the workflow_dispatch form runs it by hand.
+# When a release is merged into the General registry, the registry's JuliaTagBot user
+# comments here and this workflow tags the registered commit (v0.1.0, ...) and opens a
+# GitHub release for it, so that a tag always points at exactly what the registry serves.
+# Nothing needs installing: the comment is an ordinary one on a public repository. The
+# workflow_dispatch form runs it by hand.
 name: TagBot
 on:
   issue_comment:
