@@ -25,21 +25,28 @@ transpile(energy; outfile="body", outpath=".")
 ```
 
 That writes an `out/` folder next to where you ran it, and returns the path
-of `out/body.c`. The folder holds:
+of `out/energy.c`, or the paths when there are several functions. The folder
+holds:
 
-- `body.h` — what a caller needs: `typedef struct`s for the structs used,
-  the constants as `static const` with their values and the comments from
-  their definitions, any other global as `extern`, and each function's
-  prototype under a Doxygen block made from its docstring, with its own
-  return struct right above it when it returns a tuple. Include this from
-  your C.
-- `body.c` — the functions themselves, the mutable globals with their
-  values, and the `#include`s they need. It includes `body.h`.
+- `energy.c` and `energy.h` — the function and nothing else, and its
+  prototype under a Doxygen block made from its docstring. Every function
+  has such a pair, named after it, the ones you listed and the ones they
+  call alike.
+- a header for each struct, named after it, `Body.h`, and for the struct a
+  function returns a tuple in, `step_t.h`: another function may come to use
+  it, so it isn't kept in the file of the first that did.
+- `body.h` — the one header a caller includes: it includes all the others,
+  and holds the constants as `static const` with their values and the
+  comments from their definitions, and any other global as `extern`.
+  `body.c` holds the mutable globals, and is there only when there are any.
 - `helper.h` — everything generated that your functions need: small
   helpers as `static inline` functions, each with a two-line comment, and
   prototypes for the larger ones.
 - `helper.c` — the larger helpers: solvers, factorizations, array printing;
   absent when there are none.
+
+With `split=false` it is two files instead, `body.h` and `body.c`, holding
+all of the above.
 
 It compiles as a unit, and this is the setting it is written for:
 

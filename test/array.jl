@@ -257,7 +257,7 @@ check("outplaced", [Case(state, SVector(1.0, 0.0, 0.0), SVector(0.0, 1.0, 0.0), 
                     Case(literalend, 2), Case(lastof, SVector(1.0, 2.0, 3.0))])
 @testset "outplaced" begin
     src = csource("outplaced", state, whole, grown, swapped, scaled, turned, stacked, sliced, either)
-    fn(name) = (i = findfirst("void $name(", src)[1]; src[i:findnext("\n}", src, i)[end]])
+    fn(name) = (i = findlast("void $name(", src)[1]; src[i:findnext("\n}", src, i)[end]])       # the definition: its prototype comes before it
     @test occursin("// copy x and v into out, where the function works on them and returns them\n    memcpy(out, x, sizeof(double[3]));\n    double *x_local = out;\n    memcpy(&out[3], v, sizeof(double[3]));\n    double *v_local = &out[3];", src)
     @test occursin("add_3(x_local, temp2, x_local);  // x_local += temp2", fn("state")) && !occursin("memcpy(out, x_local", fn("state")) && !occursin("memcpy(&out[3], v_local", fn("state"))
     @test occursin("// copy x into out, where the function works on it and returns it\n    memcpy(out, x, sizeof(double[3]));\n    double *x_local = out;", src) && occursin("mul_3_s(x_local, s, x_local);", src)

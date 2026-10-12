@@ -187,11 +187,11 @@ transpile(f, g, (h, Float64, 3, Float64, 2, 3); outfile="name", outpath=dir)
 A target is a function with one concrete method, or a function with its
 argument types spelled out, where a type followed by integers is an array of
 that element type and size. Arrays are `StaticArrays` types, or `Array`s
-given a size in the call. An `out/` folder comes out: `<outfile>.h` for
-callers, `<outfile>.c` with the functions, `helper.h` and `helper.c` with
+given a size in the call. An `out/` folder comes out: a `.c` and a `.h` for
+every function, named after it, a header for every struct, `<outfile>.h` for
+callers, which includes them all, and `helper.h` and `helper.c` with
 the generated helpers they need — and anything a listed function calls
-comes with it. With `split=true`, every function and struct gets a file of
-its own, and `<outfile>.h` includes them all. Constants a function reads come along too, and any you list
+comes with it. With `split=false`, it is all in `<outfile>.h` and `<outfile>.c`. Constants a function reads come along too, and any you list
 by keyword, `transpile(f; g, μ)`; `@transpile` does the same from inside a
 module. `transpile` and `@transpile` are the package's only exported names,
 so your own functions can be named anything.
@@ -209,7 +209,7 @@ override them.
   gives a reading order.
 - [doc/dev/](doc/dev/) — the decision log, and the survey of what could
   still map between Julia and C.
-- [aux/stackmath/](aux/stackmath/stackmath.jl) — a script that generates a
+- [extra/stackmath/](extra/stackmath/stackmath.jl) — a script that generates a
   library of static linear algebra in C, every operation at every size from
   2 to 10, one file per operation: what the operator targets are for.
 
@@ -222,3 +222,23 @@ julia test/runtests.jl
 Every test transpiles a few Julia functions, builds a C program that calls
 them on fixed inputs, and compares what C prints with what Julia computes
 for the same calls.
+
+## Authorship
+
+A note from me, the author. LegibleC is my idea and my work, made in my
+free time. I saw that numerical code was being written twice and decided it
+did not have to be; I decided what the generated C should look like and why;
+and every decision about the architecture — what the transpiler accepts,
+what it refuses, how names, types, memory and control flow come out — was
+mine, thought through for its consequences before I made it and argued in
+[doc/dev/decision.md](doc/dev/decision.md), and I held the result to the
+standard each decision set.
+
+I used an AI assistant as the tool for building it fast: it drafted and
+refactored code under my direction. Without it, a project of this size could
+never have fit in the free time I had; with it, my time went where it
+should, on the thinking rather than the typing. The tests above are what
+vouch for the code: every function in them is transpiled, compiled and run
+against Julia on every push, under GCC and Clang.
+
+-*Joel T Harter*

@@ -11,7 +11,9 @@ on:
   pull_request:
 jobs:
   # The C is written for GCC and for Clang. The suite runs under both on Linux, and under
-  # Apple's Clang, so that neither is ever only assumed to work.
+  # Apple's Clang, so that neither is ever only assumed to work. Three jobs run on the
+  # latest Julia; a fourth runs on the oldest Julia that Project.toml claims, so that the
+  # claim stays checked as Julia moves on.
   test:
     strategy:
       fail-fast: false
@@ -19,10 +21,16 @@ jobs:
         include:
           - os: ubuntu-latest
             cc: gcc
+            julia: '1'
           - os: ubuntu-latest
             cc: clang
+            julia: '1'
           - os: macos-latest
             cc: clang
+            julia: '1'
+          - os: ubuntu-latest
+            cc: gcc
+            julia: '1.13'
     runs-on: ${{ matrix.os }}
     env:
       CC: ${{ matrix.cc }}
@@ -30,7 +38,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: julia-actions/setup-julia@v2
         with:
-          version: '1'
+          version: ${{ matrix.julia }}
       - uses: julia-actions/cache@v2
       - run: julia -e 'using Pkg; Pkg.develop(path="."); Pkg.add(["StaticArrays", "SpecialFunctions"])'
       - run: ${{ matrix.cc }} --version
@@ -49,9 +57,9 @@ jobs:
       - uses: julia-actions/cache@v2
       - run: julia -e 'using Pkg; Pkg.develop(path="."); Pkg.add(["StaticArrays", "SpecialFunctions"])'
       - name: generate
-        run: julia aux/stackmath/stackmath.jl
+        run: julia extra/stackmath/stackmath.jl
       - name: compile every file
-        run: cd aux/stackmath/out && for f in *.c; do cc -std=c11 -Wall -Wextra -Werror -Wno-unused-parameter -I. -c "$f" -o /dev/null; done
+        run: cd extra/stackmath/out && for f in *.c; do cc -std=c11 -Wall -Wextra -Werror -Wno-unused-parameter -I. -c "$f" -o /dev/null; done
       - name: no token, so nothing is published
         if: env.TOKEN == ''
         run: echo "::notice::STACKMATH_TOKEN is not set. The C was generated and compiled, and was not pushed to stackmath."
@@ -65,7 +73,7 @@ jobs:
         if: env.TOKEN != ''
         run: |
           rm -f stackmath/src/*.c stackmath/src/*.h
-          cp aux/stackmath/out/*.c aux/stackmath/out/*.h stackmath/src/
+          cp extra/stackmath/out/*.c extra/stackmath/out/*.h stackmath/src/
           cd stackmath
           git add -A
           if git diff --cached --quiet; then echo "stackmath unchanged"; exit 0; fi

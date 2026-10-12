@@ -6,7 +6,7 @@ Every keyword option of `transpile`.
 |---|---|---|
 | `outfile` | `"juliatranspiled"` | the file name; `.c` is added if missing |
 | `helper` | `"helper"` | the name of the helper files, `helper.h` and `helper.c`; give each `transpile` call into one `out/` its own, and each keeps its helpers |
-| `split` | `false` | every function in a file of its own, named after it, listed or not, with its header; every struct in a header of its own; a function's return struct with the function. `<outfile>.h` then holds the globals and includes every other header, so a caller can still include one file; `<outfile>.c` holds the mutable globals, and is written only when there are any. Names that differ only in case, `point` and `Point`, share a file named in lowercase |
+| `split` | `true` | every function in a file of its own, named after it, listed or not, with its header, and nothing else in it; every struct in a header of its own, the struct a function returns a tuple in included, since another function may come to use it. `<outfile>.h` then holds the globals and includes every other header, so a caller can still include one file; `<outfile>.c` holds the mutable globals, and is written only when there are any. Names that differ only in case, `point` and `Point`, share a file named in lowercase. Off, everything is in `<outfile>.h` and `<outfile>.c` |
 | `outpath` | `pwd()` | the folder |
 | `source` | `true` | copy each Julia line above its C as `// @file.jl:12: …`; comments are always carried, this controls the code lines |
 | `precise` | `false` | print floats with every digit (`%.17g`) instead of `%g` |
@@ -14,6 +14,9 @@ Every keyword option of `transpile`.
 | `goto` | `false` | may the C contain a `goto`? It is wanted for one thing only: a `break` that leaves a whole nest of loops, `for i in 1:n, j in 1:m`, which C has no other word for. On, that is `goto done;` and a label after the nest, as many C programmers write it by hand. Off, it is a flag that the outer loops test, `i <= n && !done`, which the coding guidelines for safety-critical C prefer, and the output has no `goto` anywhere |
 | `c23floattypes` | `false` | write `Float64` and `Float32` as C23's `_Float64` and `_Float32` instead of `double` and `float` |
 | `bool` | `Bool` | the C type for a `Bool`: `Bool` for C's `bool`, or one of Julia's integer types for that integer wherever a `Bool` appears, names included; the C then writes `0` and `1` and reads any nonzero value as true |
+| `real` | `Float64` | the real type that goes unmarked in a name: `add_3` is its helper, and another type's is `add_3F32`. `Float64` or `Float32`. Nothing but names changes |
+| `int` | `Int64` | the same for integers: `gcd` is its helper, and another type's is `gcdI32`. Any of Julia's eight integer types |
+| `force` | `false` | write every real as the `real` type and every integer as the `int` type, whatever the Julia says: parameters, results, fields, elements, numbers written out, and so every helper's name unmarked. Which method a call runs is still decided by the Julia's own types. The arithmetic is then no longer the Julia's: a `Float32` rounds where a `Float64` didn't, an `Int8` no longer wraps at 128, an unsigned number is signed, and a function of a number's bits, `leading_zeros`, counts the new width. A `Bool` is left to the `bool` option, and a `Char` is a `char` |
 | `width` | `100` | the longest line; a long scalar expression wraps at its loosest operators |
 | `templimit` | `40` | the longest name a temporary may be given before its descriptive suffix is dropped |
 | `tempsuffix` | `false` | on, temporaries carry what they were computed from, `temp1_a_b = a + b`, and an unnamed lambda what it captured, `fun3_a_b`; off, they are `temp1`, `temp2`, … and `fun1`, `fun2`, … |

@@ -157,7 +157,7 @@ function run(todo, scope::Module)
     end
     log = joinpath(dir, "cc.log")
     function build(batch, tag)
-        path = LegibleC.transpile([(it.f, it.types...) for it in batch]...; outpath=joinpath(dir, "src"), outfile="g$tag", helper="h$tag", source=false, scope)
+        path = LegibleC.transpile([(it.f, it.types...) for it in batch]...; outpath=joinpath(dir, "src"), outfile="g$tag", helper="h$tag", source=false, scope, split=false)      # thousands of functions to a batch: one file each
         path isa AbstractString || (path = path[1])
         object = joinpath(dir, "g$tag.o")
         if success(pipeline(`$cc $flags -c $(joinpath(dirname(path), "g$tag.c")) -o $object`; stderr=log, stdout=devnull))

@@ -106,7 +106,9 @@ for the names to differ, and applied uniformly to the whole group:
    `g_3`, `g_2x3`
 2. **Type abbreviation,** after — from the table in `math/scalar.md`, an array
    described by its element type. A function whose arguments are all
-   `Float64` leaves the abbreviations off entirely.
+   `Float64` leaves the abbreviations off entirely. `Float64` is the real that
+   goes unmarked unless the `real` option names another, and `Int64` the
+   integer, for a helper over integers such as `gcd`, unless `int` does.
    `poly`, `poly_I64_I64`, `poly_F32_F32`
    `fun4_2x2_2x2`, `fun4_2x2F32_2x2F32`
    `h_3`, `h_3F64_I64`

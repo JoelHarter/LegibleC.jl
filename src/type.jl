@@ -11,6 +11,53 @@ const posix = Ref(false)
 const gotos = Ref(false)            # π and ℯ as POSIX `M_PI` and `M_E` rather than our own `LEGIBLEC_PI` and `LEGIBLEC_E`
 const booltype = Ref{Type}(Bool)
 
+# The number types that go unmarked in a name, `add_3` and not `add_3F64`, `gcd` and not
+# `gcdI64`: `Float64` and `Int64` unless the `real` and `int` options of `transpile` say
+# otherwise. And `forcing`, the `force` option: every real is then written as the one real
+# type and every integer as the one integer type, whatever the Julia says. That is no longer
+# the Julia's own arithmetic, a `Float32` rounds where a `Float64` didn't and an `Int8` no
+# longer wraps at 128, so it is for the author to ask for, and is off unless they do.
+const realtype = Ref{Type}(Float64)
+const inttype = Ref{Type}(Int64)
+const forcing = Ref(false)
+
+# What marks a type in a helper's name: nothing for the default, else its abbreviation. A
+# helper over reals is marked against the real default, one over integers against the integer's.
+realmark(T::Type) = forced(T) === realtype[] ? "" : abbrev(T)
+intmark(T::Type) = forced(T) === inttype[] ? "" : abbrev(T)
+
+# `T` as the C is to hold it. Unless numbers are being forced, itself. Forced, a real is the
+# real default and an integer the integer default, inside an array, a tuple, a complex number
+# or a struct's parameters too. A `Bool` and a `Char` are no numbers here, and a function's
+# type is left alone, since it says which function it is.
+function forced(@nospecialize(T))
+    forcing[] && T isa Type || return T
+    T === Union{} && return T
+    T isa Union && return Union{forced(T.a), forced(T.b)}
+    T isa DataType || return T
+    (T === Float32 || T === Float64) && return realtype[]
+    T <: Base.BitInteger64 && return inttype[]
+    (T <: Function || T <: Type || isempty(T.parameters)) && return T
+    params = Any[p isa Type ? forced(p) : p for p in T.parameters]
+    all(((a, b),) -> a === b, zip(params, T.parameters)) && return T
+    return try T.name.wrapper{params...} catch; T end
+end
+
+# A number written out, as the type it is forced to. One that the type can't hold is left as it is.
+forcedvalue(x) = forcing[] && x isa Union{Float32, Float64, Base.BitInteger64} ? (try convert(forced(typeof(x)), x) catch; x end) : x
+
+# The same with forcing set aside, for asking Julia which method a call runs: that is
+# decided by the types the Julia has, not the ones the C is given.
+function unforced(f)
+    old = forcing[]
+    forcing[] = false
+    try
+        return f()
+    finally
+        forcing[] = old
+    end
+end
+
 # (Julia, C, abbreviation)
 const scalars = (
     (Bool,    "bool",     "B"),
@@ -31,6 +78,7 @@ const scalars = (
 
 # The C spelling of a Julia type.
 function ctype(T::Type)
+    T = forced(T)
     T === Bool && booltype[] !== Bool && return ctype(booltype[])
     T === Float64 && c23floattypes[] && return "_Float64"
     T === Float32 && c23floattypes[] && return "_Float32"
@@ -64,6 +112,7 @@ end
 
 # The abbreviation for a scalar type in a mangled name.
 function abbrev(T::Type)
+    T = forced(T)
     T === Bool && booltype[] !== Bool && return abbrev(booltype[])
     for (julia, _, a) in scalars
         T === julia && return a
@@ -166,7 +215,7 @@ height(p) = !(p isa Type) || p <: Function ? 0 : p <: AbstractArray ? 1 :
 # One type parameter as it appears inside a name: a number as itself, an array as its size, a
 # struct or tuple by its own name, a scalar abbreviated.
 typeword(p) = !(p isa Type) ? string(p) : p <: Function ? functionname(p) :
-    p <: AbstractArray ? dims(p) * (eltype(p) === Float64 ? "" : abbrev(eltype(p))) :
+    p <: AbstractArray ? dims(p) * realmark(eltype(p)) :
     isstruct(p) || istuple(p) ? structname(p) : abbrev(p)
 
 # The C names of a struct's fields, in order; a tuple's are letters.
@@ -228,7 +277,8 @@ end
 
 # Julia's lazy `Adjoint`/`Transpose` wrappers, as the transpiler sees them: the
 # transpose of what they wrap. Everything else passes.
-function normalize(T::Type)
+normalize(T::Type) = forced(normalized(T))
+function normalized(T::Type)
     T === Union{} && return T
     # An irrational held as a value, `(ℯ, π, 2.0)`, is held as the double it is a macro for.
     T <: Tuple && isconcretetype(T) && any(P -> P <: AbstractIrrational, T.parameters) &&

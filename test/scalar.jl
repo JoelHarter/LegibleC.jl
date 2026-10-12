@@ -594,7 +594,7 @@ vsinpi32(x::Float32) = sinpi(x) + cospi(x)
     # The harness lets a tiny answer be a little off; these are held to the last digits.
     dir = mktempdir()
     path = Main.LegibleC.transpile(vsinpi, vcospi; outfile="tight", outpath=dir, scope=@__MODULE__)
-    out = dirname(path)
+    out = dirname(path isa AbstractString ? path : path[1])
     tight = [1000000.25, 1.0000000001, 0.9999999999, 123456.789, 0.1, 7.7, 1e-8]
     write(joinpath(dir, "main.c"), "#include <stdio.h>\n#include \"tight.h\"\nint main(void) { double xs[] = {" * join(repr.(tight), ", ") *
           "}; for (int i = 0; i < $(length(tight)); i++) { printf(\"%.17g %.17g\\n\", vsinpi(xs[i]), vcospi(xs[i])); } return 0; }\n")

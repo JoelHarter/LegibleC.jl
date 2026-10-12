@@ -217,4 +217,4 @@ function describe(T::Type, level, alldouble)
 end
 
 # Are all of a signature's types Float64, counting an array by its element type?
-alldouble(sig) = all(T -> T <: Function || (T <: AbstractArray ? eltype(T) : T) === Float64, sig)
+alldouble(sig) = all(T -> T <: Function || forced(T <: AbstractArray ? eltype(T) : T) === realtype[], sig)

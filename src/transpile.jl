@@ -1,12 +1,12 @@
 # The API: targets to method instances, C names, and the output file.
 
 """
-    transpile(target...; outfile="juliatranspiled", outpath=pwd(), split=false) -> path
+    transpile(target...; outfile="juliatranspiled", outpath=pwd(), split=true) -> path
 
-Transpile one or more targets into `outpath/out/`: `<outfile>.c` with the functions
-and `<outfile>.h` for callers, `helper.h` and `helper.c` with the generated helpers
-they need. Returns the path of the functions file — the paths, in file order, when
-there are several. Each `target` is one of:
+Transpile one or more targets into `outpath/out/`: a `.c` and a `.h` for each function,
+named after it, `<outfile>.h` for callers, which includes them all, `helper.h` and
+`helper.c` with the generated helpers they need. Returns the path of the function's
+file — the paths, in file order, when there are several. Each `target` is one of:
 
 - a `Function` — must have exactly one method with all-concrete argument types
 - a `Core.MethodInstance` — must be a concrete specialization
@@ -26,12 +26,13 @@ Options:
 - `outfile`: name of the functions file; `.c` is appended if not already present.
 - `helper`: the name of the helper files, `helper.h` and `helper.c` by default — for
   several `transpile` calls into one `out/`, each with helpers of its own to keep.
-- `split`: every function in a file of its own, named after it, listed or not, with
-  its header; every struct in a header of its own; a function's return struct with
-  the function. `<outfile>.h` then holds the globals and includes every other
-  header, so a caller can still include one file; `<outfile>.c` holds the mutable
-  globals, and is written only when there are any. Names that differ only in case,
-  `point` and `Point`, share a file, named by the lowercase one.
+- `split`: on unless told. Every function in a file of its own, named after it, listed
+  or not, with its header, and nothing else in it; every struct in a header of its own,
+  the struct a function returns a tuple in included. `<outfile>.h` then holds the globals
+  and includes every other header, so a caller can still include one file; `<outfile>.c`
+  holds the mutable globals, and is written only when there are any. Names that differ
+  only in case, `point` and `Point`, share a file, named by the lowercase one. Off,
+  everything is in `<outfile>.h` and `<outfile>.c`.
 - `outpath`: the folder whose `out/` subfolder receives the files; defaults to
   Julia's current working directory.
 - `templimit`: longest name an intermediate value may be given before its
@@ -68,6 +69,14 @@ Options:
   Julia's integer types, `Int32` say, for that integer wherever a `Bool` appears:
   parameters, results, fields, elements, and the names that mention the type. The
   C then writes `0` and `1`, and reads any nonzero value as true.
+- `real`, `int`: the real type and the integer type that go unmarked in a name, `Float64`
+  and `Int64` unless told: `add_3` and `gcd` are theirs, and another type's are `add_3F32`,
+  `gcdI32`. Nothing but names changes.
+- `force`: write every real as the `real` type and every integer as the `int` type,
+  whatever the Julia says: parameters, results, fields, elements, and numbers written out.
+  Off unless asked for, since the arithmetic is then no longer the Julia's own: a
+  `Float32` rounds where a `Float64` didn't, and an `Int8` no longer wraps at 128. A
+  `Bool` is left to the `bool` option.
 
 Each function keeps its Julia name in C. If the same function is transpiled at more
 than one signature in a single call, those get the argument types appended
@@ -75,7 +84,7 @@ than one signature in a single call, those get the argument types appended
 """
 function transpile(target::Union{Function, Core.MethodInstance, Tuple{Union{Function, Symbol}, Vararg{Union{DataType, Integer}}},
                                  Tuple{typeof(broadcast), Function, Vararg{Union{DataType, Integer}}}, Type, Pair{Symbol, <:Any}, GlobalRef}...;
-                   outfile::AbstractString="juliatranspiled", outpath::AbstractString=pwd(), split::Bool=false,
+                   outfile::AbstractString="juliatranspiled", outpath::AbstractString=pwd(), split::Bool=true,
                    helper::AbstractString="helper",
                    templimit::Integer=40,
                    # On by default only until dynamic arrays are supported; then it flips
@@ -89,6 +98,9 @@ function transpile(target::Union{Function, Core.MethodInstance, Tuple{Union{Func
                    spelling::AbstractDict=Dict{Char, String}(),
                    c23floattypes::Bool=false,
                    bool::Type=Bool,
+                   real::Type=Float64,
+                   int::Type=Int64,
+                   force::Bool=false,
                    scope::Module=Main,
                    variables...)
     bool === Bool || bool in (Int8, UInt8, Int16, UInt16, Int32, UInt32, Int64, UInt64) ||
@@ -96,7 +108,12 @@ function transpile(target::Union{Function, Core.MethodInstance, Tuple{Union{Func
     LegibleC.spelling[] = checkspelling(spelling)
     LegibleC.scope[] = scope
     LegibleC.c23floattypes[] = c23floattypes
+    real in (Float32, Float64) || throw(ArgumentError("real must be Float64 or Float32, not $real"))
+    int in (Int8, UInt8, Int16, UInt16, Int32, UInt32, Int64, UInt64) || throw(ArgumentError("int must be one of Julia's integer types, not $int"))
     LegibleC.booltype[] = bool
+    LegibleC.realtype[] = real
+    LegibleC.inttype[] = int
+    LegibleC.forcing[] = force
     LegibleC.posix[] = posix
     LegibleC.gotos[] = goto
     empty!(LegibleC.irrationals)
@@ -119,6 +136,9 @@ function transpile(target::Union{Function, Core.MethodInstance, Tuple{Union{Func
         LegibleC.gotos[] = false
         empty!(LegibleC.irrationals)
         LegibleC.booltype[] = Bool
+        LegibleC.realtype[] = Float64
+        LegibleC.inttype[] = Int64
+        LegibleC.forcing[] = false
     end
     throw(problem)
 end
@@ -587,9 +607,10 @@ function placement(prog::Program, base, split::Bool, names, helper)
         n = structname(T)
         where[n] = split ? n : mentions(helpertext, n) ? helper : base
     end
+    # A function's file holds the function and nothing else: the struct it returns has a
+    # header of its own, as any struct has, since another function may come to use it.
     for (n, _) in prog.tupledefs
-        owner = endswith(n, "_t") ? get(where, n[1:end-2], nothing) : nothing
-        where[n] = !split ? base : owner === nothing ? n : owner
+        where[n] = split ? n : base
     end
     files = [base; [where[n] for n in names]; [where[structname(T)] for (T, _) in prog.structs]; [where[n] for (n, _) in prog.tupledefs]]
     filter!(!=(helper), files)
@@ -643,6 +664,9 @@ function writefiles(dir, prog::Program, base, where, order, names, functions, he
         # with a return struct right above the first prototype that returns it.
         body = String[]
         append!(body, sts)
+        ntypes = length(body)                    # the typedefs come first: see the includes below
+        # A C function called through `ccall` is declared where every file can see it.
+        umbrella && append!(body, fgn)
         protos = String[]
         done = Set{String}()
         for k in fns
@@ -671,9 +695,19 @@ function writefiles(dir, prog::Program, base, where, order, names, functions, he
         for h in includes(htext); push!(header, "#include <$h>"); end
         (any(mentions(htext, n) for n in helperstructs) || usesdefine(htext)) && push!(header, "#include \"$helper.h\"")
         included = [f for f in order if f != file && (umbrella && file == base || needs(htext, f))]
+        # The header that includes every other may hold a struct of its own, `quat.h` beside a
+        # struct `Quat` where file names can't differ by case alone. The others include it for
+        # that struct, so the struct is written before it includes them.
+        first = umbrella && file == base && ntypes > 0 ? join(body[1:ntypes], "\n") : ""
+        if !isempty(first)
+            length(header) > n0 && push!(header, "")
+            push!(header, rstrip(first), "")
+            htext = join(body[ntypes+1:end], "\n")
+        end
         for f in included; push!(header, "#include \"$f.h\""); end
         length(header) > n0 && push!(header, "")
-        push!(header, rstrip(htext), "", "#endif  // $guard")
+        isempty(strip(htext)) || push!(header, rstrip(htext), "")         # a header of includes alone has nothing more
+        push!(header, "#endif  // $guard")
         write(joinpath(dir, file * ".h"), join(header, "\n") * "\n")
         # The `.c`: the includes it needs beyond its own header, then the mutable globals
         # with their values, then the definitions. Nothing to hold, no file.
@@ -685,6 +719,7 @@ function writefiles(dir, prog::Program, base, where, order, names, functions, he
             append!(cglobals, lines)
         end
         defs = [functions[k][3] for k in fns]
+        umbrella && (fgn = String[])              # declared in the header
         isempty(cglobals) && isempty(defs) && isempty(fgn) && continue
         ctext = join([cglobals; fgn; defs], "\n")
         path = joinpath(dir, file * ".c")
@@ -718,7 +753,7 @@ end
 
 # What each standard header provides, as a pattern over the C text that uses it.
 const standard = (
-    ("stdint.h", r"\b(u?int(8|16|32|64)_t)\b"),
+    ("stdint.h", r"\b(u?int(8|16|32|64)_t|U?INT(8|16|32|64)_(MAX|MIN))\b"),
     ("stdbool.h", r"\b(bool|true|false)\b"),
     ("stdlib.h", r"\b(llabs|abs|exit|abort|malloc|calloc|free)\("),
     ("string.h", r"\b(memcpy|memset|memmove|memcmp|strcmp|strlen|strcpy|strncpy|strcat|strchr|strstr)\("),

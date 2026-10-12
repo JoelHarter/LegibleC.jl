@@ -84,7 +84,7 @@ function powerhelper!(helpers::Dict{String, String}, T::Type)
         push!(prog.pending, (mi, sig, name))
         return name
     end
-    name = isarray(T) ? helpername(:powi, (T,)) : "powi" * (T === Float64 ? "" : abbrev(T))
+    name = isarray(T) ? helpername(:powi, (T,)) : "powi" * realmark(T)
     haskey(helpers, name) && return name
     helpers[name] = ""                                  # it is being written
     walking = prog.walking

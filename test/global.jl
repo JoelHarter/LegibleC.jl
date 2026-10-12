@@ -69,7 +69,7 @@ check("global", [Case(fall, 2.0), Case(shifted, SVector(1.0, 1.0, 1.0)), Case(sc
     @test occursin("const double q = 3.0;", loose) && occursin("const double width = 3.0;", loose)
     # The macro sets `scope` to where it is written.
     dir = mktempdir()
-    path = @transpile(plain; k, outfile="mac", outpath=dir)
+    path = @transpile(plain; k, outfile="mac", outpath=dir, split=false)
     @test occursin("\ndouble k = 2.0;", read(path, String))
     # A definition typed at the REPL transpiles; it just has no source to comment from.
     include_string(@__MODULE__, "replfun(x::Float64) = 2x", "REPL[7]")

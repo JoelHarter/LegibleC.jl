@@ -2222,3 +2222,59 @@ one of Julia's own may print or write, so purity looks into it.
 into an array it captured. A function kept in a field, a tuple or an array. A
 struct called as a function as a target of `transpile`. Keywords on the
 reductions.
+
+## 2026-10-04 — The types that go unmarked, and numbers forced to them
+
+**What was asked.** A default real type and a default integer type, `Float64`
+and `Int64` unless told, which decide what goes unmarked in a name; and a
+toggle that writes every real and every integer as those two, whatever the
+Julia says. The `bool` option was there already and does what was described:
+any nonzero value read as true, 0 and 1 written.
+
+**`real` and `int` change names only.** `add_3` is the real default's helper
+and `add_3F32` another's; with `real=Float32` they swap. An array helper is
+marked against the real default only, since `add_3` can't be both the double's
+and the 64-bit integer's. A helper over integers alone, `gcd`, `fld`, the bit
+functions, is marked against the integer default.
+
+**`force` is the first option that is allowed to differ from Julia.** Every
+other rule holds the C to what the Julia computes. This one is asked for
+exactly because the author wants the C at another precision than they wrote,
+so it is off by default and the guide says what it costs: rounding, no wrap at
+the old width, unsigned made signed, bit counts of the new width.
+
+**Where it is done.** In one place, the function that settles a Julia type
+into what the C holds (`forced`, through `normalize`): a real becomes the
+real default and an integer the integer default, inside arrays, tuples,
+complex numbers and a struct's parameters. Everything downstream, the `f`
+family of `math.h`, the helpers' names, the casts, follows from the type it is
+handed. A number written out is converted the same way, `2.0` to `2.0f`, and a
+conversion between two types that are now one is no cast at all.
+
+**Which method runs is still Julia's choice.** A call is resolved by the
+types the Julia has, not the ones the C is given, or `half(x::Float64)` would
+have no method once `x` is a `float`. Two instances of one method that differ
+only in types that are now the same are one C function.
+
+## 2026-10-12 — Saying how it was written
+
+**What was asked.** Whether the README should say that the code was written
+with an AI assistant, before the package is registered.
+
+**Decided: yes, in one short section at the end of the README, after Tests.**
+Nothing in the registry asks for it. The reason is the one the README makes
+about its own output: a reader is told the C reads as if a careful engineer
+wrote it, and is owed the same candor about the transpiler. Said after the
+tests, the note reads as what the suite is for; said at the top, as a warning
+on code not yet seen.
+
+**What it says and does not.** First, whose work it is: the author saw the
+need, had the idea, decided what the C should be, and thought through every
+decision about the architecture for its consequences before making it; the
+log is the record. `authors` in `Project.toml` stays one name for that
+reason. Second, that an assistant was the tool for building it fast,
+drafting and refactoring under direction, and that without it the project
+would not have fit in the free time it was made in. Not which assistant; the
+name is credit to a tool, not information a reader acts on. Third, that the
+tests are what vouch for the code: the suite against Julia on every push. It
+does not hedge about quality, and it gives the assistant no byline.

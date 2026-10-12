@@ -3201,8 +3201,8 @@ end
 # A Julia value as a C initializer: numbers, characters, strings, arrays in row-major
 # nesting, tuples and structs field by field.
 initializer(x::Bool) = booltype[] === Bool ? (x ? "true" : "false") : (x ? "1" : "0")
-initializer(x::Integer) = integer(x)
-initializer(x::AbstractFloat) = isinf(x) ? (x > 0 ? "INFINITY" : "-INFINITY") : isnan(x) ? "NAN" : x isa Float32 ? replace(string(x), "f" => "e") * "f" : repr(Float64(x))
+initializer(x::Integer) = integer(forcedvalue(x))
+initializer(x::AbstractFloat) = (x = forcedvalue(x); isinf(x) ? (x > 0 ? "INFINITY" : "-INFINITY") : isnan(x) ? "NAN" : x isa Float32 ? replace(string(x), "f" => "e") * "f" : repr(Float64(x)))
 initializer(x::AbstractIrrational) = macroname(x)   # `const τ = π` keeps the name; a stored double is digits
 initializer(x::Char) = charliteral(x)
 initializer(x::AbstractString) = "\"" * cstring(x) * "\""
@@ -3439,8 +3439,9 @@ function userinstance!(sc::Scope, f, args; bring::Bool=true)
     spec = Any[]
     for a in args
         T = valuetype(sc, a)
-        T <: Shaped && (push!(spec, eltype(T)); append!(spec, shape(T)); continue)
-        push!(spec, juliatype(T))
+        J = juliasown(sc, a)                    # the method is Julia's choice, by Julia's types
+        T <: Shaped && (push!(spec, J <: AbstractArray ? eltype(J) : eltype(T)); append!(spec, shape(T)); continue)
+        push!(spec, unforced(() -> juliatype(J)))
     end
     samedispatch(sc, f, args, spec)
     return register!(sc.prog, f, spec; bring)
@@ -3490,7 +3491,16 @@ function register!(prog::Program, f, spec; bring::Bool=true)
     end
     mi === nothing && return nothing
     nameof(Base.moduleroot(mi.def.module)) in known && return nothing
+    sig = Type[forced(T) for T in sig]
     haskey(prog.calls, mi) && return (mi, sig, prog.calls[mi])
+    # With numbers forced, the method at `Float32` and at `Float64` is one C function: the second is the first.
+    if forcing[] && bring
+        for (other, name) in prog.calls
+            other.def === mi.def && other.specTypes.parameters[1] === mi.specTypes.parameters[1] && argtypes(other) == argtypes(mi) || continue
+            prog.calls[mi] = name
+            return (mi, sig, name)
+        end
+    end
     bring || return (mi, sig, "")          # only asked about: a function is brought in by a call that is written
     # A lambda is named by its own rule; a struct called as a function, `p(x)`, is its type and `call`.
     self = mi.specTypes.parameters[1]
@@ -3725,6 +3735,7 @@ function value(sc::Scope, x)
         return "($(ctype(T))){$(join(sc.slotkinds[x.id].fields, ", "))}"
     end
     x isa Core.SlotNumber && return sc.names[x.id]
+    x = forcedvalue(x)                                          # a number written out, as the type numbers are forced to
     x isa Bool            && return booltype[] === Bool ? (x ? "true" : "false") : (x ? "1" : "0")
     x isa Char            && return charliteral(x)
     x isa AbstractString  && return "\"" * cstring(x) * "\""
@@ -3789,7 +3800,16 @@ function valuetype(sc::Scope, x)
     x isa Core.SSAValue   && return get(sc.shapes, x.id, widen(sc.ci.ssavaluetypes[x.id]))
     x isa Core.SlotNumber && return get(sc.slotshapes, x.id, widen(sc.ci.slottypes[x.id]))
     x isa GlobalRef       && return globaltype(getfield(x.mod, x.name))
-    return typeof(x)
+    return forced(typeof(x))
+end
+
+# The type Julia has for `x`, whatever the C is given: what a call's method is chosen by.
+function juliasown(sc::Scope, x)
+    forcing[] || return valuetype(sc, x)
+    return unforced() do
+        x isa Core.SSAValue && sc.ci.code[x.id] isa GlobalRef && return valuetype(sc, sc.ci.code[x.id])
+        x isa Core.SSAValue ? widen(sc.ci.ssavaluetypes[x.id]) : x isa Core.SlotNumber && x.id <= length(sc.ci.slottypes) ? widen(sc.ci.slottypes[x.id]) : valuetype(sc, x)
+    end
 end
 
 # The function object a call refers to. In unoptimized IR the callee is usually an

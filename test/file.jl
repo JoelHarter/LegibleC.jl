@@ -43,22 +43,26 @@ check("lib", [Case(fall, 2.0), Case(far, Point(3.0, 4.0)), Case(alone, 1.0), Cas
     @test occursin("#include \"fall.h\"\n#include \"height.h\"\n", text("height.c"))
     @test occursin("#include \"Point.h\"\n\n/**", text("far.h")) && occursin("typedef struct {\n    double x;\n    double y;\n} Point;", text("Point.h"))
     @test occursin("/**\n * Squared.", text("square.h"))
-    # A return struct stays with its function; a pass-through's header includes it.
+    # A function's file holds the function alone: the struct it returns has a header of its
+    # own, which its header and a pass-through's both include.
     paths = transpile(twice; outfile="lib", split=true, outpath=dir, scope=@__MODULE__)
     @test basename.(paths) == ["twice.c", "step.c"]
-    @test occursin("} step_t;", text("step.h")) && !occursin("} step_t;", text("twice.h")) && occursin("#include \"step.h\"\n\n/**", text("twice.h"))
+    @test occursin("} step_t;", text("step_t.h")) && !occursin("} step_t;", text("step.h")) && !occursin("} step_t;", text("twice.h"))
+    @test occursin("#include \"step_t.h\"\n\n/**", text("twice.h")) && occursin("#include \"step_t.h\"\n\n/**", text("step.h"))
+    # Split is what happens unless told otherwise.
+    @test basename.(transpile(height, far, alone; outfile="lib", outpath=mktempdir(), scope=@__MODULE__)) == ["height.c", "far.c", "alone.c", "fall.c", "square.c"]
     # Names that differ only in case share a file, named in lowercase.
     fresh = mktempdir()
     @test transpile(point; outfile="lib", split=true, outpath=fresh, scope=@__MODULE__) == joinpath(fresh, "out", "point.c")
     @test sort(readdir(joinpath(fresh, "out"))) == ["lib.h", "point.c", "point.h"]
     merged = read(joinpath(fresh, "out", "point.h"), String)
     @test occursin("} Point;", merged) && occursin("double point(Point p);", merged)
-    # One file, as ever.
-    @test transpile(height, far; outfile="both", outpath=dir, scope=@__MODULE__) == joinpath(out, "both.c")
+    # One file, when asked for.
+    @test transpile(height, far; outfile="both", split=false, outpath=dir, scope=@__MODULE__) == joinpath(out, "both.c")
     @test occursin("double square(double x)", text("both.c")) && occursin("static const double g = 9.81;", text("both.h"))
     @test_throws ArgumentError transpile(height; outfile="helper", outpath=dir, scope=@__MODULE__)
     # The helper files by another name, so two calls into one `out/` keep both sets.
-    path = transpile(doubled; outfile="geo", helper="geohelper", outpath=dir, scope=@__MODULE__)
+    path = transpile(doubled; outfile="geo", helper="geohelper", split=false, outpath=dir, scope=@__MODULE__)
     @test isfile(joinpath(out, "geohelper.h")) && occursin("#include \"geohelper.h\"", text("geo.c")) && occursin("LEGIBLEC_GEOHELPER_H", text("geohelper.h"))
     @test_throws ArgumentError transpile(far; outfile="same", helper="same", outpath=dir, scope=@__MODULE__)
 end

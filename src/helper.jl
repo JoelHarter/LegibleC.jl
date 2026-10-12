@@ -79,7 +79,7 @@ function helpername(op::Symbol, types; pointwise::Bool=false)
     # isn't double, is marked as a real's is.
     fundamental(T) = T <: AbstractArray ? eltype(T) : T
     precision(E) = E <: Complex ? real(E) : E
-    alldouble = all(T -> precision(fundamental(T)) === Float64, types)
+    alldouble = all(T -> forced(precision(fundamental(T))) === realtype[], types)
     sizes = [T <: AbstractArray ? dims(T) : fundamental(T) <: Complex ? "Cs" : "s" for T in types]
     typs = [abbrev(precision(fundamental(T))) for T in types]
     if !pointwise && op in (:add, :sub, :dot, :cross) && allequal(sizes)
@@ -323,7 +323,7 @@ end
 # call never reaches C. The work is done on magnitudes as unsigned, so that the one value
 # with no negative, the type's minimum, takes no special care.
 function integerhelper!(helpers::Dict{String, String}, op::Symbol, E::Type)
-    name = string(op) * (E === Int64 ? "" : abbrev(E))
+    name = string(op) * intmark(E)
     haskey(helpers, name) && return name
     t, u = ctype(E), ctype(unsigned(E))
     magnitude(x) = E <: Signed ? "$x < 0 ? -($u)$x : ($u)$x" : x
@@ -351,7 +351,7 @@ end
 # `mod1`, `fld1`. C's `/` rounds toward zero, so each is that and a correction where the two
 # differ: a remainder that isn't zero, and signs that say which way the quotient was cut.
 function roundedhelper!(helpers::Dict{String, String}, op::Symbol, E::Type)
-    name = string(op) * (E === Int64 ? "" : abbrev(E))
+    name = string(op) * intmark(E)
     haskey(helpers, name) && return name
     t = ctype(E)
     signed = E <: Signed
@@ -379,7 +379,7 @@ end
 # `<stdbit.h>`, which few compilers ship, and the builtins differ from compiler to compiler,
 # so each is a few lines on the unsigned type of the same width.
 function bithelper!(helpers::Dict{String, String}, op::Symbol, E::Type)
-    name = string(op) * (E === Int64 ? "" : abbrev(E))
+    name = string(op) * intmark(E)
     haskey(helpers, name) && return name
     t, u, bits = ctype(E), ctype(unsigned(E)), 8 * sizeof(E)
     if op === :count_ones
@@ -488,7 +488,7 @@ end
 # result is an `Int64` for every integer type but `UInt64`, whose own it is.
 function factorialhelper!(helpers::Dict{String, String}, E::Type)
     R = E === UInt64 ? UInt64 : Int64
-    name = "factorial" * (R === Int64 ? "" : abbrev(R))
+    name = "factorial" * intmark(R)
     haskey(helpers, name) && return name
     t = ctype(R)
     width = ndigits(factorial(20))
@@ -508,7 +508,7 @@ end
 # itself pays a compare and a select for its rule; so does the helper. A count that is known
 # to be in range, a literal or a loop variable over a literal range, is a plain C shift.
 function shifthelper!(helpers::Dict{String, String}, op::Symbol, E::Type)
-    name = string(op) * (E === Int64 ? "" : abbrev(E))
+    name = string(op) * intmark(E)
     haskey(helpers, name) && return name
     t, u, bits = ctype(E), ctype(unsigned(E)), 8 * sizeof(E)
     left(n) = "($t)(($u)x << $n)"                                     # through the unsigned type: no overflow to speak of
@@ -527,7 +527,7 @@ end
 # difference is an answer and not rounding. `minN` and `maxN`, N for the NaN they keep: the
 # name says it is not C's own function, and the comment says what it is.
 function nanhelper!(helpers::Dict{String, String}, op::Symbol, E::Type)
-    name = (op === :min ? "minN" : "maxN") * (E === Float64 ? "" : abbrev(E))
+    name = (op === :min ? "minN" : "maxN") * realmark(E)
     haskey(helpers, name) && return name
     t, f = ctype(E), E === Float32 ? "f" : ""
     word, sign, c = op === :min ? ("smaller", "<", "fmin$f") : ("larger", ">", "fmax$f")
@@ -540,7 +540,7 @@ end
 # by `x`'s exponent. Below the normal range it is the smallest float there is, and at the
 # largest float it is still finite, which is why it is not `nextafter(x, INFINITY) - x`.
 function ulphelper!(helpers::Dict{String, String}, E::Type)
-    name = "ulp" * (E === Float64 ? "" : abbrev(E))
+    name = "ulp" * realmark(E)
     haskey(helpers, name) && return name
     t, f, P = ctype(E), E === Float32 ? "f" : "", E === Float32 ? "FLT" : "DBL"
     body = ["$t a = fabs$f(x);", "if (!isfinite(a)) {", "    return NAN;", "}",
@@ -553,7 +553,7 @@ end
 # an infinity being themselves. C's `frexp` gives it in [0.5, 1), so it is doubled. The C
 # library has a `significand` of its own on some systems, so the helper isn't called that.
 function mantissahelper!(helpers::Dict{String, String}, E::Type)
-    name = "mantissa" * (E === Float64 ? "" : abbrev(E))
+    name = "mantissa" * realmark(E)
     haskey(helpers, name) && return name
     t, f = ctype(E), E === Float32 ? "f" : ""
     helpers[name] = definition(t, name, ["$t x"], ["int e;", "return 2 * frexp$f(x, &e);"];
@@ -564,7 +564,7 @@ end
 # `hypot(x, y, z)`: scaled by the largest so that nothing overflows on the way, as Julia does
 # it. An infinity among them is the answer even beside a NaN.
 function hypothelper!(helpers::Dict{String, String}, E::Type)
-    name = "hypot3" * (E === Float64 ? "" : abbrev(E))
+    name = "hypot3" * realmark(E)
     haskey(helpers, name) && return name
     t, f = ctype(E), E === Float32 ? "f" : ""
     body = ["if (isinf(x) || isinf(y) || isinf(z)) {", "    return INFINITY;", "}",
@@ -587,7 +587,7 @@ end
 # C23 has `sinpi`, `cospi` and `tanpi` of its own in `math.h`, on the few systems that have
 # caught up, so the helpers aren't called that.
 function pihelper!(helpers::Dict{String, String}, op::Symbol, E::Type)
-    name = (op === :sinc ? "sinc" : replace(string(op), "pi" => "_pi")) * (E === Float64 ? "" : abbrev(E))
+    name = (op === :sinc ? "sinc" : replace(string(op), "pi" => "_pi")) * realmark(E)
     haskey(helpers, name) && return name
     t, f = ctype(E), E === Float32 ? "f" : ""
     lit(x) = E === Float32 ? "$(x)f" : string(x)
@@ -673,7 +673,7 @@ end
 # Julia's `mod` on floats: the remainder with the divisor's sign, where C's `fmod` gives
 # the dividend's. `modulo(x, y)`, `moduloF32` for floats — Julia's definition, in C.
 function modhelper!(helpers::Dict{String, String}, E::Type)
-    name = "modulo" * (E === Float64 ? "" : abbrev(E))
+    name = "modulo" * realmark(E)
     haskey(helpers, name) && return name
     t = ctype(E)
     if E <: Integer

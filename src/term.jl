@@ -73,6 +73,12 @@ paren(t::Term) = Term(:paren, "", [t], t.julia, t.c, PRIMARY, t.reach)
 # `2.0f`, never `(double)2`. One rule, here, for every way a literal comes to be a float, with
 # nothing to tell apart: `n / 2`, a declared type's `convert`, `Float64(2)`, `float(2)`.
 function cast(J, t::Term)
+    if forcing[] && J isa DataType
+        # With numbers forced to one type, a conversion between two of them converts nothing.
+        J = forced(J)
+        forced(t.julia) === J && return t
+        J <: Integer && J !== Bool && t.kind === :number && fits(t.reach, J) && return atom(initializer(convert(J, t.reach[1])), J)
+    end
     if J isa DataType && J <: AbstractFloat
         t.kind === :number && return atom(initializer(J(t.reach[1])), J)
         t.kind === :atom && t.julia === Bool && t.text in ("true", "false") && return atom(initializer(J(t.text == "true")), J)

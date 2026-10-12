@@ -207,7 +207,7 @@ end
 # one a blank line. Nothing after the last element, so `println` adds the newline as it
 # does for a scalar. Fields are right-aligned so columns line up.
 function printarrayhelper!(helpers::Dict{String, String}, E::Type; precise::Bool=false)
-    name = "printarray" * (E === Float64 ? "" : "_" * abbrev(E))
+    name = "printarray" * (isempty(realmark(E)) ? "" : "_" * abbrev(E))
     haskey(helpers, name) && return name
     body = ["int n = 1;",
             "for (int d = 0; d < ndims; d++) {",

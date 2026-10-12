@@ -107,10 +107,11 @@ function check(name, cases::Vector{Case}; targets=nothing, extra::AbstractString
     dir = mktempdir()
     fs = unique(c.f for c in cases)
     scope = parentmodule(fs[1])            # the test module: its names are bare
-    path = transpile((targets === nothing ? fs : targets)...; outpath=dir, outfile=name, scope, kw...)
-    path isa AbstractString || (path = path[1])
+    paths = transpile((targets === nothing ? fs : targets)...; outpath=dir, outfile=name, scope, kw...)
+    path = paths isa AbstractString ? paths : paths[1]
     LegibleC.scope[] = scope               # so the names spelled below match the file's
     LegibleC.booltype[] = get(kw, :bool, Bool)
+    LegibleC.realtype[], LegibleC.inttype[], LegibleC.forcing[] = get(kw, :real, Float64), get(kw, :int, Int64), get(kw, :force, false)
     cnames = Dict(zip(fs, identifiers([identifier(string(nameof(f))) for f in fs])))
     headers = ["#include \"$h\"" for h in readdir(dirname(path)) if endswith(h, ".h") && h != "helper.h"]
     # `CMPLX` builds a complex input exactly. Clang on Linux doesn't get it from glibc's <complex.h>,
@@ -162,6 +163,7 @@ function check(name, cases::Vector{Case}; targets=nothing, extra::AbstractString
     push!(main, "    return 0;", "}")
     LegibleC.scope[] = Main
     LegibleC.booltype[] = Bool
+    LegibleC.realtype[], LegibleC.inttype[], LegibleC.forcing[] = Float64, Int64, false
     write(joinpath(dir, "main.c"), join(main, "\n") * "\n")
     exe = joinpath(dir, "main")
     out = dirname(path)
@@ -173,11 +175,13 @@ function check(name, cases::Vector{Case}; targets=nothing, extra::AbstractString
         for (k, c) in enumerate(cases)
             got = parse.(Float64, split(lines[k]))
             want = flat(references[k])
-            tol = single(references[k]) ? (rtol=1e-5, atol=1e-6) : (rtol=1e-9, atol=1e-12)
+            # With every real forced to `Float32` the C is only as close as a `Float32` is.
+            tol = single(references[k]) || (get(kw, :force, false) && get(kw, :real, Float64) === Float32) ? (rtol=1e-5, atol=1e-6) : (rtol=1e-9, atol=1e-12)
             @test agree(got, want; tol...) || (println("$(nameof(c.f))$(c.args): C gave $got, Julia $want"); false)
         end
     end
-    return snap(name, read(path, String))
+    # Every function has a file of its own: the C of them all, in order, is what a test reads.
+    return snap(name, paths isa AbstractString ? read(path, String) : join((read(p, String) for p in paths if endswith(p, ".c")), "\n"))
 end
 
 # Transpile and compile only, for a test that checks the text of the C: every file
