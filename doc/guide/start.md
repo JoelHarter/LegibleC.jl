@@ -6,7 +6,7 @@ Installing LegibleC and transpiling a first function.
 
 ```julia
 ] dev /path/to/LegibleC          # track a checkout
-] add https://github.com/JoelHarter/LegibleC   # or install from GitHub
+] add https://github.com/JoelHarter/LegibleC.jl   # or install from GitHub
 using LegibleC
 ```
 

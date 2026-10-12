@@ -1,6 +1,6 @@
 # LegibleC
 
-[![CI](https://github.com/JoelHarter/LegibleC/actions/workflows/ci.yml/badge.svg)](https://github.com/JoelHarter/LegibleC/actions/workflows/ci.yml)
+[![CI](https://github.com/JoelHarter/LegibleC.jl/actions/workflows/ci.yml/badge.svg)](https://github.com/JoelHarter/LegibleC.jl/actions/workflows/ci.yml)
 
 Write numerical code in Julia. Get the C you would have written by hand.
 
