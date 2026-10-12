@@ -1,5 +1,7 @@
 # LegibleC
 
+[![CI](https://github.com/JoelHarter/LegibleC/actions/workflows/ci.yml/badge.svg)](https://github.com/JoelHarter/LegibleC/actions/workflows/ci.yml)
+
 Write numerical code in Julia. Get the C you would have written by hand.
 
 ## The problem it solves
@@ -146,7 +148,11 @@ be read by a person who didn't write it.
   toolchain moves on. And it comes with the language's runtime on board —
   trimming it down is possible and hard — where this needs nothing but the
   C standard library. This produces source, and source is the artifact
-  every other tool in an engineering process knows what to do with.
+  every other tool in an engineering process knows what to do with. And
+  sometimes source is not a preference but a requirement: a team, a
+  company or a certifying authority rules that what ships must exist as C
+  that a person can review. A binary cannot meet that. This can, because
+  the C is there, and it is legible.
 - **From generic C generators** — MATLAB Coder, Cython, f2c. Their C is
   correct and complete, and it will compile years from now. It also reads
   like it was generated: names nobody chose, arrays behind a runtime of
@@ -179,7 +185,7 @@ be read by a person who didn't write it.
 ## Using it
 
 ```julia
-] dev /path/to/LegibleC        # or: ] add https://github.com/JoelHarter/LegibleC
+] add LegibleC
 using LegibleC
 transpile(f, g, (h, Float64, 3, Float64, 2, 3); project="name", outpath=dir)
 ```
@@ -200,6 +206,16 @@ so your own functions can be named anything.
 [doc/guide/](doc/guide/README.md) is the user guide: what's accepted,
 targets, every option, calling the C, how names come out and how to
 override them.
+
+## Version
+
+LegibleC is at `0.x`. What a version promises: the C computes what the Julia
+computes, by the same steps, and a case where it quietly differs is a bug.
+`transpile`, `@transpile` and their options change only with a minor
+version, `0.2`; what the C looks like — names, file layout, how a construct
+is spelled — may change with any version while `0.x` lasts, since that is
+what this project is still deciding. If you check the generated C into a
+repository, regenerate it when you update, and read the diff.
 
 ## Documentation
 

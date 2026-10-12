@@ -38,7 +38,7 @@ including them all, the helpers in `helper.h`/`.c` — see `start.md`.
 | returning a scalar | `return x;` |
 | returning an array | through a trailing parameter: the returned variable itself when every exit returns the same one, else `out` |
 | `return nothing`, a `Nothing` result | `void` |
-| tuples, multiple return values | yes, as a generated struct (`../struct.md`) |
+| tuples, multiple return values | yes: named returns as a generated struct, a tuple of one scalar type as a C array, mixed tuples as a struct (`../struct.md`) |
 | calling another user function | yes; brought in on demand if not listed, recursion included (`../call.md`) |
 | `Base.:*(a::Quaternion, b::Quaternion) = …`, an operator method on your struct | yes, named like a helper: `mul_Quaternion_Quaternion`, `add_Quaternion`, `mul_Quaternion_s`; `a * b * c` is the two calls |
 | `ccall`, `@ccall` | yes: the call itself, with a header or a prototype (`../call.md`) |

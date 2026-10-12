@@ -76,9 +76,20 @@ const scalars = (
     (Char,    "char",     "C"),      # ASCII: Julia's Char is a code point, C's char a byte
 )
 
+# A tuple of one scalar type throughout — `NTuple{28, Float64}`, `(1.0, 2.0, 3.0)`, which are
+# one type to Julia — is a C array, `double a[28]`, wherever it is held, indexed, passed or
+# built: a C author writes no struct of 28 lettered fields. The stand-in `Shaped` carries its
+# size, as it does a sized `Array`'s, so every array path applies. The one exception is a
+# return of named variables, `return x, ẋ`, which keeps the struct named after them
+# (`returnkind!`); it is told apart by its `Kind`, not its type, so the few places that need
+# the tuple as Julia has it ask for it unmapped (`widen(…; uniform=false)`).
+isscalar(P) = P isa DataType && any(P === julia for (julia, _, _) in scalars)
+isuniform(T) = T isa DataType && T <: Tuple && !isempty(T.parameters) && all(P -> P === T.parameters[1], T.parameters) && isscalar(T.parameters[1])
+uniformed(T) = isuniform(T) ? shaped(T.parameters[1], (length(T.parameters),)) : T
+
 # The C spelling of a Julia type.
 function ctype(T::Type)
-    T = completed(forced(T))
+    T = uniformed(completed(forced(T)))
     T === Bool && booltype[] !== Bool && return ctype(booltype[])
     T === Float64 && c23floattypes[] && return "_Float64"
     T === Float32 && c23floattypes[] && return "_Float32"
@@ -144,10 +155,10 @@ istuple(T::Type) = (T = completed(T); T isa DataType && isconcretetype(T) && (T 
 # Written as plain loops, and not specialised on the type: a closure over `T` would be a new
 # type for every function there is, and Julia would compile each of these again for each.
 function elements(@nospecialize(T::Type))
-    T <: Tuple && return Any[completed(p) for p in T.parameters]
+    T <: Tuple && return Any[uniformed(completed(p)) for p in T.parameters]
     out = Any[]
     for k in 1:fieldcount(T)
-        F = completed(fieldtype(T, k))
+        F = uniformed(completed(fieldtype(T, k)))
         isfunction(F) ? append!(out, elements(F)) : push!(out, F)
     end
     return out
@@ -215,7 +226,7 @@ height(p) = !(p isa Type) || p <: Function ? 0 : p <: AbstractArray ? 1 :
 
 # One type parameter as it appears inside a name: a number as itself, an array as its size, a
 # struct or tuple by its own name, a scalar abbreviated.
-typeword(p) = !(p isa Type) ? string(p) : p <: Function ? functionname(p) :
+typeword(p) = !(p isa Type) ? string(p) : (p = uniformed(completed(p)); p <: Function) ? functionname(p) :
     p <: AbstractArray ? dims(p) * realmark(eltype(p)) :
     isstruct(p) || istuple(p) ? structname(p) : abbrev(p)
 
@@ -278,12 +289,13 @@ end
 
 # Julia's lazy `Adjoint`/`Transpose` wrappers, as the transpiler sees them: the
 # transpose of what they wrap. Everything else passes.
-normalize(T::Type) = forced(normalized(T))
-function normalized(T::Type)
+normalize(T::Type; uniform::Bool=true) = forced(normalized(T; uniform))
+function normalized(T::Type; uniform::Bool=true)
     T === Union{} && return T
     # An irrational held as a value, `(ℯ, π, 2.0)`, is held as the double it is a macro for.
     T <: Tuple && isconcretetype(T) && any(P -> P <: AbstractIrrational, T.parameters) &&
-        return Tuple{(P <: AbstractIrrational ? Float64 : P for P in T.parameters)...}
+        (T = Tuple{(P <: AbstractIrrational ? Float64 : P for P in T.parameters)...})
+    uniform && isuniform(T) && return uniformed(T)
     T <: LinearAlgebra.Adjoint || T <: LinearAlgebra.Transpose || return T
     P = T.parameters[2]
     shape(P) === nothing && return T

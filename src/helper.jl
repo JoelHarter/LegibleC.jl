@@ -776,10 +776,13 @@ function reducehelper!(helpers::Dict{String, String}, op::Symbol, T::Type, E::Ty
            # `argmax`, `argmin`: Julia's 1-based index of the first extreme element.
            op == :argmax  ? ["int64_t best = 1;"; "$(ctype(eltype(T))) max = $first;"; nest(pairs, ["if ($a > max$(nanfirst(a, "max"))) {", "    max = $a;", "    best = $(idx[1]) + 1;", "}"]); "return best;"] :
            op == :argmin  ? ["int64_t best = 1;"; "$(ctype(eltype(T))) min = $first;"; nest(pairs, ["if ($a < min$(nanfirst(a, "min"))) {", "    min = $a;", "    best = $(idx[1]) + 1;", "}"]); "return best;"] :
+           # `extrema`: the (min, max) pair is a tuple of one scalar type, so an array of two, out
+           # through a parameter like any array.
            op == :extrema ? ["$(ctype(eltype(T))) min = $first;"; "$(ctype(eltype(T))) max = $first;";
-                             nest(pairs, ["if ($a < min$(nan(a))) {", "    min = $a;", "}", "if ($a > max$(nan(a))) {", "    max = $a;", "}"]); "return ($(ctype(E))){min, max};"] :
+                             nest(pairs, ["if ($a < min$(nan(a))) {", "    min = $a;", "}", "if ($a > max$(nan(a))) {", "    max = $a;", "}"]); "out[0] = min;"; "out[1] = max;"] :
            throw(ArgumentError("unsupported reduction: $op"))
-    helpers[name] = definition(ctype(E), name, [declare(T, A; constant=true)], body; doc=[prose(op, (T,)), "returns $op($A)"])
+    helpers[name] = op == :extrema ? definition("void", name, [declare(T, A; constant=true), declare(E, "out")], body; doc=[prose(op, (T,)), "out = extrema($A)"]) :
+                    definition(ctype(E), name, [declare(T, A; constant=true)], body; doc=[prose(op, (T,)), "returns $op($A)"])
     return name
 end
 

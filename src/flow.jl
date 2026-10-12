@@ -881,7 +881,7 @@ function mark!(sc::Scope)
         whole = use isa Core.ReturnNode ||
                 use isa Expr && use.head === :call && !(callee_or_nothing(ci, use.args[1]) in (Base.getproperty, Core.getfield, Base.getindex))
         small = T <: Union{Number, Char} || !choice && isstruct(T) && !ismutabletype(T) &&
-                (!any(isarray, fieldtypes(T)) || whole && !(callee_or_nothing(ci, st.args[1]) isa Type))
+                (!any(isarray, elements(T)) || whole && !(callee_or_nothing(ci, st.args[1]) isa Type))     # `elements`: a tuple field of one scalar type is an array
         small && !compiletime(ci.ssavaluetypes[i]) || continue
         use isa Expr && use.head === :call && duplicates(sc, u, use, i) && continue
         effect = !choice && (!pure(sc, st) || any(a -> a isa Core.SSAValue && a.id in effectful, st.args[2:end]))

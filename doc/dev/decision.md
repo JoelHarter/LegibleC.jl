@@ -2365,3 +2365,39 @@ for `Any`. That function is refused, with a message that names the cause and
 the spelling with the length. Reading the field or an element of it, which
 needs no inference, works. Slow Julia is still Julia, so the struct is
 accepted; code Julia can't type isn't, as everywhere.
+
+## 2026-10-12 — A tuple of one scalar type is a C array
+
+**What was asked.** `a::NTuple{28, Float64}` came out as a struct of 28
+lettered fields, `x.a.ab` for `x.a[28]`, and a parameter `t::NTuple{3,
+Float64}` was spread into `t1, t2, t3`. A C author writes `double a[28]`
+and `const double t[3]`.
+
+**The rule.** A tuple whose elements are all one scalar type — `NTuple{N,
+T}` and `Tuple{T, T, …}` are one type to Julia, so the rule is by content,
+the line Julia's own printing draws — is a C array wherever it stands: a
+field, a parameter, a value built or held, a positional return out through
+an array parameter like any array, `extrema`'s pair included. The one
+exception is a return of named variables, `return x, ẋ`, which keeps the
+struct named after them, `step_t {x, xdot}`: that is the C an author writes
+for it, and it was already decided. A tuple of mixed types is a struct as
+before, spread as a parameter as before.
+
+**How it is told apart.** By `Kind`, not by type: a value's C form was
+already decided per value (`returnkind!`, `tuplekind`), and this is one more
+form. `widen`, where every type enters the transpiler, maps a uniform tuple
+to the sized stand-in `Shaped`, so every array path applies without knowing;
+the few places that need the tuple as Julia has it — the named return, a
+call to a function that returns one, method lookup for a callee whose Julia
+takes the tuple, the `(value, state)` pair of a destructuring — ask for it
+unmapped. The test harness learned the same two things.
+
+**The discontinuity.** `Tuple{F64, F64, I64, F64}` is a struct and becomes
+an array when the integer is made a float. Real, and Julia's own: it prints
+the first as `Tuple{…}` and the second as `NTuple{4, Float64}`. The mixed
+unnamed tuple held in a field is rare in numerical code; the uniform one is
+what people write, and it was the one coming out absurd.
+
+**Left open.** A named return as a C union of the named struct and the
+array, so `t.x` and `t[0]` are both the author's; on the todo, since the two
+spellings must never come apart.

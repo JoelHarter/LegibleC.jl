@@ -28,8 +28,10 @@ value. A `mutable struct` is handled through a pointer, `Counter *c`, and
 you own the object: create it, pass its address, read it back.
 
 **Tuples.** A function returning `x, ẋ` returns a struct named after it,
-`step_t`, with fields `x` and `xdot`, by value. A function taking a tuple
-takes its elements as separate parameters, `t1`, `t2`, `t3`.
+`step_t`, with fields `x` and `xdot`, by value. A tuple of one scalar type
+anywhere else — a field, a parameter, `(x, 2x)` returned — is a C array,
+`double t[3]`. A function taking a tuple of mixed types takes its elements
+as separate parameters, `t1`, `t2`, `t3`.
 
 **Strings** are `const char *` and characters are `char`. Printing goes to
 `stdout` through `printf`.

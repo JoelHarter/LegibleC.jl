@@ -125,6 +125,17 @@ function twice(x::Float64, ẋ::Float64, dt::Float64)
     return step(x, ẋ, dt)
 end
 kept(x::Float64, dt::Float64) = (t = step(x, 0.0, dt); t[1] * t[2])
+# A tuple of one scalar type is an array: a field, a parameter, a positional return.
+struct Ring
+    a::NTuple{28,Float64}
+end
+ends(r::Ring) = r.a[1] + r.a[28]
+pairup(x::Float64) = (x, 2x)
+unpairup(x::Float64) = begin a, b = pairup(x); a - b end
+struct Holder
+    t::NTuple{3,Float64}
+end
+holding(a::Float64) = Holder((a, a, 2a))
 
 p = Point(3.0, 4.0); q = Point(1.0, 2.0); b = Body(SVector(1.0, 2.0, 3.0), 2.5); v = SVector(1.0, 1.0, 1.0)
 check("placement", [Case(spun, SVector(0.0, 0.0, 1.0), 0.6), Case(spun2, SVector(0.0, 1.0, 0.0), 0.6), Case(rebuilt, Quat(1.0, SVector(1.0, 2.0, 3.0)), 2.0),
@@ -246,6 +257,14 @@ end
     @test occursin("mul_Quaternion_Quaternion(mul_Quaternion_Quaternion(q, ", src) && occursin(r"\),\n\s+adjoint_Quaternion\(q\)\);", src)   # wrapped at the argument
     @test occursin("Quaternion adjoint_Quaternion(Quaternion q)", src)
 end
+check("uniform", [Case(ends, Ring(Tuple(1.0:28.0))), Case(third, (1.0, 2.0, 3.0)), Case(viathird, 1.5), Case(unpairup, 3.0), Case(holding, 2.0)])
+@testset "uniform tuple text" begin
+    src = csource("uniform", ends, viathird, unpairup, holding)
+    @test occursin("typedef struct {\n    double a[28];\n} Ring;", src) && occursin("return r.a[0] + r.a[27];", src)
+    @test occursin("void pairup(double x, double out[restrict 2])", src) && occursin("out[0] = x;\n    out[1] = 2 * x;", src)
+    @test occursin("double temp1[2];\n    pairup(x, temp1);\n    double a = temp1[0];\n    double b = temp1[1];", src)
+    @test occursin("Holder result;\n    result.t[0] = a;\n    result.t[1] = a;\n    result.t[2] = 2 * a;\n    return result;", src)
+end
 @testset "tuple text" begin
     src = csource("tupletext", step, twice, kept, third, viathird, unarrays, tswap)
     # A returned tuple is the function's own struct, fields named after the variables returned.
@@ -254,8 +273,8 @@ end
     # Destructured at the call site by name; passed straight on, the callee's struct is inherited.
     @test occursin("step_t temp1 = step(x, xdot, dt);\n    x = temp1.x;\n    xdot = temp1.xdot;", src) && occursin("step_t twice(", src) && occursin("return step(x, xdot, dt);", src)
     @test occursin("step_t t = step(x, 0.0, dt);", src) && occursin("return t.x * t.xdot;", src)
-    # A tuple parameter is spread; a tuple built for a call goes as its elements.
-    @test occursin("double third(double t1, double t2, double t3)", src) && occursin("return t1 + t3;", src) && occursin("return third(a, 2 * a, 3 * a);", src)
+    # A tuple of one scalar type is an array: as a parameter, and built for a call.
+    @test occursin("double third(const double t[3])", src) && occursin("return t[0] + t[2];", src) && occursin("double temp1[3] = {a, 2 * a, 3 * a};\n    return third(temp1);", src)
     # Variables returned in any order keep their names; an expression returned has none,
     # so `arrays`, returning `(v, 2.0 * v)`, gets the structural struct with positional fields.
     @test occursin("typedef struct {\n    double b;\n    double a;\n} tswap_t;", src) && occursin("return (tswap_t){b, a};", src)

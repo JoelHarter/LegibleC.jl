@@ -7,7 +7,7 @@ using Test, StaticArrays, LinearAlgebra
 using SpecialFunctions          # for the rows of the table that are its functions: `gamma`, `erf`
 using LegibleC
 # The internals the harness needs to build a `main` around the generated C.
-using LegibleC: identifier, identifiers, isarray, isstruct, istuple, structname, declare, normalize, shape, shaped, ctype, arrow, fieldcnames, charliteral, returnkind!, Program, initializer
+using LegibleC: identifier, identifiers, isarray, isstruct, istuple, isuniform, structname, declare, normalize, shape, shaped, ctype, arrow, fieldcnames, charliteral, returnkind!, Program, initializer
 
 # The setting the C is written for (doc/guide/start.md), so every test checks it holds up there.
 # `-fno-cx-limited-range` keeps complex division overflow-safe under fast-math, as Julia's
@@ -86,7 +86,7 @@ function cprint(T::Type, x)
                 "}"]
     end
     fields = istuple(T) ? collect(T.parameters) : [fieldtype(T, k) for k in 1:fieldcount(T)]
-    return reduce(vcat, (cprint(F, "$x$(arrow(T))$c") for (F, c) in zip(fields, fieldcnames(T))); init=String[])
+    return reduce(vcat, (cprint(normalize(F), "$x$(arrow(T))$c") for (F, c) in zip(fields, fieldcnames(T))); init=String[])   # `normalize`: a tuple field of one scalar type is an array
 end
 
 # Do two flat results agree? To rounding, with NaN equal to NaN. A single-precision result
@@ -124,8 +124,9 @@ function check(name, cases::Vector{Case}; targets=nothing, extra::AbstractString
         for (j, x) in enumerate(c.args)
             T = ctypeof(x)
             n = "a$(k)_$j"
-            if x isa Tuple
-                # A tuple parameter is spread: one C variable per element.
+            if x isa Tuple && !isuniform(typeof(x))
+                # A tuple parameter is spread: one C variable per element. (One of a single
+                # scalar type is an array, declared and passed as one below.)
                 for (e, y) in enumerate(x)
                     push!(main, "    $(declare(ctypeof(y), "$(n)_$e")) = $(cliteral(y));")
                     push!(passes, "$(n)_$e")
@@ -142,18 +143,19 @@ function check(name, cases::Vector{Case}; targets=nothing, extra::AbstractString
         push!(references, r)
         R = ctypeof(r)
         call = "$(cnames[c.f])($(join(passes, ", ")))"
+        # A tuple returned as the function's own struct, with its field names; one of a single
+        # scalar type returned positionally has no kind, and is an array out through a parameter.
+        kind = r isa Tuple ? returnkind!(Program(), Base.method_instance(c.f, Tuple(typeof.(c.args))), cnames[c.f]) : nothing
         if R === Nothing
             push!(main, "    $call;")
+        elseif kind !== nothing
+            push!(main, "    $(kind.cname) r$k = $call;")
+            for (f, y) in zip(kind.fields, r)
+                append!(main, "    " .* cprint(ctypeof(y), "r$k.$f"))
+            end
         elseif isarray(R)
             push!(main, "    $(declare(R, "r$k"));", "    $(cnames[c.f])($(join([passes; "r$k"], ", ")));")
             append!(main, "    " .* cprint(R, "r$k"))
-        elseif r isa Tuple
-            # The function's own struct, with its field names.
-            kind = returnkind!(Program(), Base.method_instance(c.f, Tuple(typeof.(c.args))), cnames[c.f])
-            push!(main, "    $(kind.cname) r$k = $call;")
-            for (F, f, y) in zip(R.parameters, kind.fields, r)
-                append!(main, "    " .* cprint(ctypeof(y), "r$k.$f"))
-            end
         else
             push!(main, "    $(declare(R, "r$k")) = $call;")
             append!(main, "    " .* cprint(R, "r$k"))

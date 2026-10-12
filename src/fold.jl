@@ -381,7 +381,7 @@ function paired!(lines, sc::Scope, i, st::Expr)
     f = callee_or_nothing(ci, st.args[1])
     f in (Base.sincosd, Base.divrem, Base.fldmod, Base.modf, Base.frexp) || return false
     args = st.args[2:end]
-    P = widen(ci.ssavaluetypes[i])
+    P = widen(ci.ssavaluetypes[i]; uniform=false)      # the pair as Julia has it, never an array
     P isa DataType && P <: Tuple && length(P.parameters) == 2 || return false
     types = [valuetype(sc, a) for a in args]
     ok = f in (Base.divrem, Base.fldmod) ? length(args) == 2 && types[1] <: Base.BitInteger64 && types[1] === types[2] :

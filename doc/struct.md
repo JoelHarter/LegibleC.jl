@@ -91,14 +91,25 @@ returned isn't plain variables — `(v, 2.0 * v)`, or returns that disagree —
 the fields are positional letters and the struct is the structural
 `Tuple3xx3`.
 
-A **tuple parameter** is spread into one parameter per element:
-`third(t::NTuple{3,Float64})` is `double third(double t1, double t2, double
-t3)`, and `t[1]` inside is `t1`. A tuple built only to be passed to a
-function goes as its elements, `third(a, 2 * a, 3 * a)`, so no struct is
-made for it; a tuple that only feeds a constructor or block construction —
-`SVector(a, b, c)`, `[A B; C D]` — never exists in C either. A tuple held as
-a value elsewhere — a struct field, a tuple of tuples — is the structural
-`TupleF64xI64` with fields `a`, `b`, … named like helper inputs.
+A **tuple of one scalar type** — `NTuple{28, Float64}`, `(a, 2a, 3a)`, which
+are one type to Julia — is a **C array** wherever it stands, since a C author
+writes `double a[28]` and never a struct of 28 lettered fields: a field
+`double a[28]` read as `r.a[27]`, a parameter `double third(const double
+t[3])` with `t[1]` as `t[0]`, a tuple built for a call as an array built for
+it, `double temp1[3] = {a, 2 * a, 3 * a}; third(temp1)`, and a positional
+return, `return x, 2x`, out through an array parameter like any array, read
+back as `temp1[0]`, `temp1[1]`. The one exception is the return of named
+variables above, `return x, ẋ`, which keeps its named struct: that is told by
+the function's `Kind`, not by the type. `extrema(v)` is such a pair, out
+through a parameter.
+
+A **tuple of mixed types** as a parameter is spread into one parameter per
+element, `t1`, `t2`, …, and built only to be passed to a function goes as
+its elements, so no struct is made for it; a tuple that only feeds a
+constructor or block construction — `SVector(a, b, c)`, `[A B; C D]` — never
+exists in C either. A mixed tuple held as a value elsewhere — a struct field,
+a tuple of tuples — is the structural `TupleF64xI64` with fields `a`, `b`, …
+named like helper inputs.
 
 Under `split`, a struct of the author's has a header of its own; a type the
 Julia never named has none: a return tuple's struct sits in the header of the
