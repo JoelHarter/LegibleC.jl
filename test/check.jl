@@ -7,7 +7,7 @@ using Test, StaticArrays, LinearAlgebra
 using SpecialFunctions          # for the rows of the table that are its functions: `gamma`, `erf`
 using LegibleC
 # The internals the harness needs to build a `main` around the generated C.
-using LegibleC: identifier, identifiers, isarray, isstruct, istuple, isuniform, structname, declare, normalize, shape, shaped, ctype, arrow, fieldcnames, charliteral, returnkind!, Program, initializer
+using LegibleC: identifier, identifiers, isarray, isstruct, istuple, isuniform, structname, declare, normalize, shape, shaped, ctype, arrow, fieldcnames, charliteral, returnkind!, basetype, alldims, Program, initializer
 
 # The setting the C is written for (doc/guide/start.md), so every test checks it holds up there.
 # `-fno-cx-limited-range` keeps complex division overflow-safe under fast-math, as Julia's
@@ -77,12 +77,13 @@ function cprint(T::Type, x)
     T <: Complex && return ["printf(\"%.17g %.17g \", creal($x), cimag($x));"]
     (T <: Number && !isstruct(T) || T === Char) && return ["printf(\"%.17g \", (double)$x);"]
     if T <: AbstractArray
-        E = eltype(T)
-        E <: Complex && return ["for (int k = 0; k < $(prod(shape(T))); k++) {",
+        E = basetype(T)                    # a vector of matrices is printed flat, as it is stored
+        isstruct(E) && return reduce(vcat, (cprint(E, "$x[$k]") for k in 0:shape(T)[1]-1); init=String[])   # a vector of structs, item by item
+        E <: Complex && return ["for (int k = 0; k < $(prod(alldims(T))); k++) {",
                                 "    printf(\"%.17g %.17g \", creal(((const $(ctype(E)) *)$x)[k]), cimag(((const $(ctype(E)) *)$x)[k]));",
                                 "}"]
-        return ["for (int k = 0; k < $(prod(shape(T))); k++) {",
-                "    printf(\"%.17g \", (double)((const $(ctype(eltype(T))) *)$x)[k]);",
+        return ["for (int k = 0; k < $(prod(alldims(T))); k++) {",
+                "    printf(\"%.17g \", (double)((const $(ctype(E)) *)$x)[k]);",
                 "}"]
     end
     fields = istuple(T) ? collect(T.parameters) : [fieldtype(T, k) for k in 1:fieldcount(T)]

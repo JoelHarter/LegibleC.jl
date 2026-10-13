@@ -179,6 +179,7 @@ mutable struct Scope
     storage::Dict{String, String}       # a C name that may hold the same array as others -> the one name that stands for them all
     data::Dict{Int, String}             # a moving name that starts out with an array of its own -> that storage's C name
     inner::Vector{UnitRange{Int}}       # the source lines of functions written inside this one: theirs to show, not this one's
+    shifted::Set{Int}                   # loop variables counted from 0 in C, being read only as indices (`indexonly`)
 end
 
 function Scope(ci::Core.CodeInfo, mi::Core.MethodInstance, sig, limit::Integer, prog::Program, copycode::Bool)
@@ -207,7 +208,7 @@ function Scope(ci::Core.CodeInfo, mi::Core.MethodInstance, sig, limit::Integer, 
                  Tuple{Int, Int, String, Int}[], 0, Dict{Int, String}(), Dict{Int, Int}(), Set{Int}(), Int[1],
                  Tuple{Int, Int, Any}[], Set{Int}(), Dict{Int, Tuple{String, String}}(), nothing, Dict{Int, Kind}(), Dict{Int, Kind}(), Dict{Int, String}(), Dict{Int, Any}(), Dict{Int, Int}(), Set{String}(),
                  Block[], Int[], Dict{Int, Int}(), Tuple{Int, String}[], Dict{Int, String}(), "", Set{String}(), Dict{Int, Vector{NTuple{3, Int}}}(), nothing, Dict{Int, Any}(), Set{Int}(), Dict{Int, Any}(), Dict{Int, String}(), Set{Int}(), Dict{Int, String}(),
-                 Dict{Int, Int}(), Set{Int}(), Dict{String, String}(), Dict{Int, String}(), UnitRange{Int}[])
+                 Dict{Int, Int}(), Set{Int}(), Dict{String, String}(), Dict{Int, String}(), UnitRange{Int}[], Set{Int}())
 end
 
 include("flow.jl")
@@ -622,7 +623,7 @@ function finish(name, mi::Core.MethodInstance, sc::Scope, head, body)
     inside = mi.specTypes.parameters[1].name in prog.made
     comments, doc = sc.src === nothing || inside ? (String[], String[]) : leading(sc.src)
     origin = "$(plainname(mi.def.name))($(join(("$(ci.slotnames[i])::$(widen(ci.slottypes[i]))" for i in 2:ci.nargs), ", ")))" *
-             (sc.src === nothing ? "" : " @$(sc.src.name):$(sc.src.first)")
+             (sc.src === nothing || !locator[] ? "" : " @$(sc.src.name):$(sc.src.first)")
     what(T) = isarray(T) ? describe(T) : T === Char ? "character" : T <: AbstractString ? "string" : T <: Number ? "scalar" : ""
     params = Tuple{String, String, String}[]
     for i in parameters(sc)
@@ -1270,7 +1271,8 @@ function written!(lines, sc::Scope, i, st)
         # A tuple built only to be passed to the user's functions: its elements go
         # separately, so it never exists in C.
         sc.kinds[i] = Kind("", [value(sc, a) for a in st.args[2:end]])
-    elseif st isa Expr && st.head === :call && callee_or_nothing(ci, st.args[1]) === Core.tuple && isarray(T)
+    elseif st isa Expr && st.head === :call && callee_or_nothing(ci, st.args[1]) === Core.tuple && isarray(T) &&
+           !(sc.kind !== nothing && (onlyreturned(ci, i) || storedforreturn(sc, i)))
         # A tuple of one scalar type, `(a, 2a, 3a)`: an array, built like `SVector(a, 2a, 3a)` —
         # into the result when it is returned, straight into its field when it is a field of a
         # struct being built (`placement`), into a temp otherwise.
@@ -1291,7 +1293,7 @@ function written!(lines, sc::Scope, i, st)
             # A returned tuple with an array in it: the function's struct, field by field. A
             # field computed into its place (`placement`) is there already.
             haskey(sc.placed, i) || emit!(lines, sc, "$(sc.kind.cname) result;")
-            for (F, c, a) in zip(elements(T), sc.kind.fields, st.args[2:end])
+            for (F, c, a) in zip(elements(rawtype(sc, Core.SSAValue(i))), sc.kind.fields, st.args[2:end])   # the tuple as Julia has it
                 value(sc, a) == "result.$c" && continue
                 isarray(F) ? copy!(lines, sc, value(sc, a), valuetype(sc, a), "result.$c", F) : emit!(lines, sc, "result.$c = $(value(sc, a));")
             end
@@ -1365,6 +1367,13 @@ function written!(lines, sc::Scope, i, st)
             # range outside a `for` has no C.
             literal(sc, Core.SSAValue(i)) isa AbstractRange && onlyindexes(sc, i) && return
             throw(ArgumentError("ranges are only supported as the range of a for loop (statement $i)"))
+        elseif st isa Expr && st.head === :call && callee_or_nothing(ci, st.args[1]) === Base.getindex && isarray(T) && isarray(valuetype(sc, st.args[2])) &&
+               isarray(eltype(valuetype(sc, st.args[2]))) && length(st.args) - 2 == ndims(valuetype(sc, st.args[2])) &&
+               !any(k -> literal(sc, k) isa Colon || literal(sc, k) isa AbstractUnitRange || isarray(valuetype(sc, k)), st.args[3:end])
+            # `t[k]` on a vector of matrices: the k-th item, read where it is, `t[k-1]`. A
+            # variable made of it copies it (`slice!`).
+            sc.expr[i] = index(sc, st.args[2], st.args[3:end])
+            sc.shapes[i] = T
         elseif isarray(T) && !namedcall(sc, st) && foldable(sc, i, st)
             # `-x` feeding `x * s` or `x / s`: the sign goes onto the scalar, exactly.
             push!(sc.negated, i)
@@ -1549,7 +1558,7 @@ function store!(lines, sc::Scope, i, x, rhs; declaration::Bool=false)
     # that writes it when there is one, otherwise just before the copy into it.
     if rhs isa Expr
         f = callee_or_nothing(sc.ci, rhs.args[1])
-        making = f in (Base.zeros, Base.ones, Base.fill, Base.zero, Base.one) || isconstruction(f) || f === Base.materialize
+        making = f in (Base.zeros, Base.ones, Base.fill, Base.zero, Base.one) || isconstruction(f) || f === Base.materialize || f === Core.tuple
         if f in (Core.getfield, Base.getproperty, Base.getindex) && (isindexediterate(sc, rhs.args[2]) || isstruct(valuetype(sc, rhs.args[2])) || istuple(valuetype(sc, rhs.args[2])))
             # An array field of a struct or tuple, copied out: `copy_3(t.a, p);`.
             property(sc, f, rhs.args[2], rhs.args[3], i)
@@ -1634,6 +1643,17 @@ function construct!(lines, sc::Scope, i, ex::Expr, dest; declaration::Bool=false
     args = ex.args[2:end]
     f === Base.materialize && return broadcast!(lines, sc, i, args[1], dest; declaration)
     T = widen(sc.ci.ssavaluetypes[i])
+    if (f === Core.tuple || f isa Type) && isarray(T) && isarray(eltype(T)) && any(a -> isarray(valuetype(sc, a)), args)
+        # `(A, B)`, `SVector(A, B)`: a vector of matrices, each item copied into its slot.
+        declaration && emit!(lines, sc, declare(T, dest) * ";")
+        start = length(lines) + 1
+        for (k, a) in enumerate(args)
+            copy!(lines, sc, value(sc, a), valuetype(sc, a), "$dest[$(k - 1)]", eltype(T))
+        end
+        step!(lines, sc, "$dest = $(f === Core.tuple ? "" : "SVector")($(join((value(sc, a) for a in args), ", ")))"; from=start)
+        sc.shapes[i] = T
+        return
+    end
     if isconstruction(f) && length(args) == 1 && literal(sc, args[1]) isa LinearAlgebra.UniformScaling
         # `SMatrix{3,3}(I)`, `SMatrix{3,3}(2I)`: the identity matrix, or a multiple of it.
         λ = literal(sc, args[1]).λ
@@ -2156,6 +2176,16 @@ function slice!(lines, sc::Scope, i, args, dest; declaration::Bool=false)
     A, idx = args[1], args[2:end]
     T = valuetype(sc, A)
     length(idx) == ndims(T) || throw(ArgumentError("$(length(idx)) indices into a $(ndims(T))-dimensional array (statement $i)"))
+    if isarray(eltype(T)) && !any(k -> literal(sc, k) isa Colon || literal(sc, k) isa AbstractUnitRange || isarray(valuetype(sc, k)), idx)
+        # `m = t[k]` on a vector of matrices: the k-th item, copied whole.
+        E = eltype(T)
+        declaration && emit!(lines, sc, declare(E, dest) * ";")
+        start = length(lines) + 1
+        copy!(lines, sc, index(sc, A, idx), E, dest, E)
+        step!(lines, sc, "$dest = $(value(sc, A))[$(join((indexnotation(sc, k) for k in idx), ", "))]"; from=start)
+        sc.shapes[i] = E
+        return
+    end
     spans = Any[span(sc, T, d, k) for (d, k) in enumerate(idx)]
     R = widen(sc.ci.ssavaluetypes[i])
     shape(R) === nothing && (R = shaped(eltype(T), Tuple(s.extent for s in spans if !s.scalar)))
@@ -3289,6 +3319,7 @@ initializer(x) = "{" * join((initializer(getfield(x, k)) for k in 1:fieldcount(t
 # of its fields. Anything that isn't a struct or tuple is ignored.
 function structdef!(prog::Program, T::Type)
     T = uniformed(completed(T))
+    isarray(T) && return structdef!(prog, eltype(T))     # a vector of structs needs the struct
     (isstruct(T) || istuple(T)) || return
     any(p -> p.first === T, prog.structs) && return
     isstruct(T) && (k = findfirst(F -> F isa Type && F <: Function, collect(Any, fieldtypes(T))); k !== nothing) &&
@@ -3770,6 +3801,9 @@ end
 # the index already has: `v[i + 1]` is `v[i]`, `v[i - 1]` is `v[i - 2]`.
 function subscript(sc::Scope, k)
     k isa Integer && return atom(string(k - 1), Int64)
+    # An index built on a loop variable counted from 0 is written as the Julia wrote it: `i`,
+    # `i + 1`, `i - 2` — the shift of the variable and the shift of the subscript cancel.
+    shiftedslot(sc, k) && return expression(sc, k)
     t = expression(sc, k)
     less(a, n) = Term(:binary, n > 0 ? "-" : "+", [a, atom(string(abs(n)), Int64)], t.julia, common(a.c, Int32), ADD, nothing)
     if t.kind === :binary && t.text in ("+", "-") && t.parts[2].kind === :number && t.parts[2].prec == PRIMARY
@@ -3777,6 +3811,19 @@ function subscript(sc::Scope, k)
         return off == 0 ? t.parts[1] : less(t.parts[1], -off)
     end
     return less(t, 1)
+end
+
+# Is `k` a loop variable counted from 0 in C, or that variable plus or minus a literal?
+function shiftedslot(sc::Scope, k)
+    k isa Core.SlotNumber && return k.id in sc.shifted
+    k isa Core.SSAValue || return false
+    st = sc.ci.code[k.id]
+    st isa Core.SlotNumber && return st.id in sc.shifted
+    st isa Expr && st.head === :call && length(st.args) == 3 || return false
+    f = callee_or_nothing(sc.ci, st.args[1])
+    (f === Base.:+ || f === Base.:-) || return false
+    return shiftedslot(sc, st.args[2]) && literal(sc, st.args[3]) isa Integer ||
+           f === Base.:+ && shiftedslot(sc, st.args[3]) && literal(sc, st.args[2]) isa Integer
 end
 
 # An integer as C writes it. C has no negative literals: `-9223372036854775808` is the

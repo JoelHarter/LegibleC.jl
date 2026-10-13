@@ -2401,3 +2401,76 @@ what people write, and it was the one coming out absurd.
 **Left open.** A named return as a C union of the named struct and the
 array, so `t.x` and `t[0]` are both the author's; on the todo, since the two
 spellings must never come apart.
+
+## 2026-10-12 — A tuple of N items of any one type is a vector of them
+
+**What was asked.** The rule above had been built for scalars only, and a
+tuple of 2×2 matrices still came out as a struct of two lettered matrices.
+The author's objection: nothing in the design depends on what the item is.
+`NTuple{N, T}` is N items of `T` in a row, `T a[N]` in C whatever `T` is —
+a double, a 4×5×6 array, a struct, a tuple — and `t[k]` is the k-th item.
+C has no restriction here; the restriction was the transpiler's array code
+assuming a number in every slot, an implementation debt presented as a rule.
+
+**Decided.** A homogeneous tuple is an `SVector{N, T}` in all but spelling
+and is treated as that vector, for any `T` with a C form. The stand-in keeps
+the item as its element type, so a tuple of matrices is `double m[2][2][2]`,
+a tuple of structs `Point p[2]`, a tuple of tuples of scalars `double
+t[2][2]`, by the one declaration rule — the innermost type and every
+dimension down to it. `t[k]` is `a[k-1]`, the k-th item, read where it is
+when used in place and copied with `memcpy` when made into a variable;
+`(A, B)` is built item by item; a positional return goes out through the
+array parameter, `double out[2][2][2]`. The debt paid also makes a vector of
+matrices or of structs written as one, `SVector{2, SMatrix{…}}`, work the
+same way. A tuple of mixed types is a struct, as before.
+
+**Why this and not flattening.** The first attempt flattened a tuple of
+matrices into a rank-3 numeric array, which needed a special case to read
+`t[k]` as the leading index rather than Julia's linear one, and could not hold
+a struct. Keeping the item as the element type makes `t[k]` the ordinary
+element read of a vector, and holds anything.
+
+## 2026-10-12 — Three switches on what the C carries from the Julia
+
+**What was asked.** The locator in front of every copied line, `// @orbit.jl:18:`,
+off by default; and each of the three things the C carries from the Julia on a
+switch of its own.
+
+**Decided.** `source`, as before, copies each Julia line above its C; `line`,
+new and off, puts the locator in front of it and after the Julia signature in
+the Doxygen block; `comment`, new and on, carries the author's own comments and
+docstrings. Off by default because a line number moves with every edit of the
+Julia, so a C file full of them differs on every regeneration for no change
+in meaning, and because the C says what the Julia said: the line itself is
+the reference, the number only a way to find it, there for whoever wants it.
+The README's examples show the default.
+
+## 2026-10-12 — A loop variable read only as an index counts from 0
+
+**What was asked.** Every subscript carried a `- 1`, `v[i - 1]`, since the
+variable held Julia's count. It looks silly, and a C author never writes it.
+But the index may be seen outside the subscript — returned, printed, used in
+arithmetic, compared — and shifting it there would change what the C
+computes.
+
+**The rule.** A `for` loop's variable is counted from 0 in C exactly when the
+body reads it only as an index: in a subscript of `getindex` or `setindex!`,
+or plus or minus a literal that is then only a subscript (`v[i + 1]`,
+`v[i - 1]`, where the shift of the variable and the shift of the subscript
+cancel). Then the loop is `for (i = 0; i < n; i++)` and the subscripts are
+written as the Julia wrote them, `v[i]`, `v[i + 1]`. Read in any other way —
+`v[i] * i`, `v[5 - i]`, a bound of an inner loop, a value kept after the loop
+— the variable keeps Julia's count and the `- 1` stays at the subscripts, so
+nothing that crosses the function's interface changes. Decided per variable,
+from every use in the function, which is all there is: the step comments
+keep the Julia as written.
+
+**Why not always shift and add 1 where the value is needed.** It moves the
+`+ 1` to the reads a person cares about, the ones with a meaning, and leaves
+the subscripts bare; the subscript is the mechanical place, so the `- 1`
+belongs there if anywhere. And the variable's count is the only thing a
+reader can check against the Julia line above it.
+
+**Later.** The same test applies to a local that isn't a loop variable, `k =
+argmax(v); v[k]`, with a 0-based variant of its producer; and to `while` loops
+with a hand-counted index. Neither is done.

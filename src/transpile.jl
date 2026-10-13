@@ -47,9 +47,12 @@ Options:
   Julia's current working directory.
 - `templimit`: longest name an intermediate value may be given before its
   descriptive suffix is dropped (see [`temp!`](@ref)).
-- `source`: copy each line of the Julia body into the C as a comment, prefixed
-  `file:line:`, where that line's work happens. Comments are carried over
-  regardless; this controls the code. See `doc/comment.md`.
+- `source`: copy each line of the Julia body into the C as a comment, where that
+  line's work happens. See `doc/comment.md`.
+- `line`: put the locator in front of each copied line, `// @orbit.jl:18: …`, and after
+  the Julia signature in the Doxygen block, so a reader can find the line. Off unless
+  asked for: line numbers move with every edit, and the C says what the Julia said.
+- `comment`: carry the author's own comments and docstrings into the C. On unless told.
 - `precise`: print every digit of a floating value (`%.17g`, `%.9g` for
   `Float32`) instead of `%g`. See `doc/io.md`.
 - `posix`: write `pi` and `ℯ` as `M_PI` and `M_E` from `math.h`, which are POSIX
@@ -100,6 +103,8 @@ function transpile(target::Union{Function, Core.MethodInstance, Tuple{Union{Func
                    # On by default only until dynamic arrays are supported; then it flips
                    # to off, and static becomes something you opt into.
                    source::Bool=true,
+                   line::Bool=false,
+                   comment::Bool=true,
                    precise::Bool=false,
                    width::Integer=100,
                    posix::Bool=false,
@@ -126,6 +131,8 @@ function transpile(target::Union{Function, Core.MethodInstance, Tuple{Union{Func
     LegibleC.forcing[] = force
     LegibleC.posix[] = posix
     LegibleC.gotos[] = goto
+    LegibleC.locator[] = line
+    LegibleC.comments[] = comment
     LegibleC.project[] = project
     empty!(LegibleC.irrationals)
     local problem
@@ -146,6 +153,8 @@ function transpile(target::Union{Function, Core.MethodInstance, Tuple{Union{Func
         LegibleC.c23floattypes[] = false
         LegibleC.posix[] = false
         LegibleC.gotos[] = false
+        LegibleC.locator[] = false
+        LegibleC.comments[] = true
         LegibleC.project[] = "lib"
         empty!(LegibleC.irrationals)
         LegibleC.booltype[] = Bool
@@ -441,7 +450,11 @@ function globallines(g::Global, files, source::Bool, prefix; written::Bool=false
         warn && @warn "`$(g.name)` holds $(g.value) now, which isn't what its defining line gives it ($(src.file):$(src.line): $(src.text)). The C starts from $(g.value), where Julia is now. To start from another value, transpile before running anything that changes `$(g.name)`, or pass `$(g.name) = …` to `transpile`."
     end
     lines = String[]
-    source && src !== nothing && push!(lines, "// @$(src.file):$(src.line): $(src.text)")
+    if source && src !== nothing
+        text, trailing = split_comment(src.text)
+        shown = comments[] || trailing === nothing ? src.text : text          # the line, its trailing comment with it unless comments are off
+        push!(lines, "// " * (locator[] ? "@$(src.file):$(src.line): " : "") * shown)
+    end
     push!(lines, prefix * globaldecl(g; note=stale !== nothing ? stale : source && src !== nothing ? nothing : src === nothing ? nothing : src.note, text=init))
     return lines
 end

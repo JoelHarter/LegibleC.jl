@@ -36,10 +36,16 @@ never a `goto`.
 | `break`, `continue` | jumps to the loop's exit or its next-iteration point | `break;`, `continue;` |
 | `return x` anywhere | a `ReturnNode` | `return x;` (`return;` in a void function) |
 
-Loop variables are Julia's, 1-based, so an element read is `v[i - 1]`.
-Turning `for (i = 1; i <= n; i++) v[i - 1]` into the C idiom
-`for (i = 0; i < n; i++) v[i]` when `i` is only ever used as an index is a
-readability step still to come.
+**A loop variable read only as an index counts from 0.** When the body reads
+`i` only in subscripts — `v[i]`, `A[i, j]`, `v[i + 1]`, `v[i - 1]` — the C is
+the C idiom, `for (i = 0; i < n; i++)` and `v[i]`, `v[i + 1]`: the shift of the
+variable and the shift of the subscript cancel, and nothing a reader can see
+changes. Read in any other way — `v[i] * i`, `v[5 - i]`, as the bound of an
+inner loop, kept after the loop — `i` keeps Julia's count, `for (i = 1; i <=
+n; i++)`, and the `- 1` stays at its subscripts, `v[i - 1]`. Decided per
+variable from every use in the function; the step comments keep the Julia
+as written. A local that isn't a loop variable, `k = argmax(v); v[k]`, still
+carries the `- 1`.
 
 **Conditions and bounds are expressions, not temps.** `while (temp1)` would
 test a value computed once. So the calls that feed a test or a range bound —

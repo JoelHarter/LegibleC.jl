@@ -48,7 +48,7 @@ end
 whole(T::Type) = [("0", a) for a in axis(T)]
 
 # The C spelling of an array type's size, for `sizeof`.
-sizeof_(T::Type) = ctype(eltype(T)) * join("[$n]" for n in shape(T))
+sizeof_(T::Type) = ctype(basetype(T)) * join("[$n]" for n in alldims(T))
 
 # `dst = src`, both of one logical shape; `S` may be transposed relative to `D`. One
 # `memcpy` when the storage lines up, a loop through the axes otherwise.

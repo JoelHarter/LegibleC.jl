@@ -8,7 +8,12 @@ const c23floattypes = Ref(false)
 const posix = Ref(false)
 # May the C contain a `goto`? Only for the one thing C has no other word for, leaving a whole
 # nest of loops at once (the `goto` option of `transpile`). Off, the nest is left by a flag.
-const gotos = Ref(false)            # π and ℯ as POSIX `M_PI` and `M_E` rather than our own `LIB_PI` and `LIB_E`
+const gotos = Ref(false)
+# What the C carries from the Julia, each its own option of `transpile`: the locator in
+# front of a copied line, `// @orbit.jl:18:`, off unless asked for; and the author's own
+# comments and docstrings, on unless told. (The copied Julia lines themselves are `source`.)
+const locator = Ref(false)
+const comments = Ref(true)
 const booltype = Ref{Type}(Bool)
 
 # The number types that go unmarked in a name, `add_3` and not `add_3F64`, `gcd` and not
@@ -23,7 +28,7 @@ const forcing = Ref(false)
 
 # What marks a type in a helper's name: nothing for the default, else its abbreviation. A
 # helper over reals is marked against the real default, one over integers against the integer's.
-realmark(T::Type) = forced(T) === realtype[] ? "" : abbrev(T)
+realmark(T::Type) = forced(T) === realtype[] ? "" : isscalar(T) || T <: AbstractString ? abbrev(T) : typeword(T)   # an item that is itself an array or a struct, by its own word
 intmark(T::Type) = forced(T) === inttype[] ? "" : abbrev(T)
 
 # `T` as the C is to hold it. Unless numbers are being forced, itself. Forced, a real is the
@@ -76,16 +81,26 @@ const scalars = (
     (Char,    "char",     "C"),      # ASCII: Julia's Char is a code point, C's char a byte
 )
 
-# A tuple of one scalar type throughout — `NTuple{28, Float64}`, `(1.0, 2.0, 3.0)`, which are
-# one type to Julia — is a C array, `double a[28]`, wherever it is held, indexed, passed or
-# built: a C author writes no struct of 28 lettered fields. The stand-in `Shaped` carries its
-# size, as it does a sized `Array`'s, so every array path applies. The one exception is a
-# return of named variables, `return x, ẋ`, which keeps the struct named after them
-# (`returnkind!`); it is told apart by its `Kind`, not its type, so the few places that need
-# the tuple as Julia has it ask for it unmapped (`widen(…; uniform=false)`).
+# A tuple of N items of one type — `NTuple{28, Float64}`, `(1.0, 2.0, 3.0)`, a tuple of 2×2
+# matrices, of structs, of such tuples: one type to Julia however it is written — is an
+# `SVector{N, T}` in all but spelling, and is treated as that vector: N items in a row, a C
+# array `T a[N]` whatever `T` is, `double a[28]`, `double a[2][2][2]`, `Point a[3]`, and
+# `t[k]` the k-th item, `a[k-1]`. A C author writes no struct of 28 lettered fields. The
+# stand-in `Shaped` carries the count, as it does a sized `Array`'s, with the item as its
+# element type, so every array path applies — and a vector of matrices or of structs,
+# written as one, goes the same way. The one exception is a return of named variables,
+# `return x, ẋ`, which keeps the struct named after them (`returnkind!`); it is told apart
+# by its `Kind`, not its type, so the few places that need the tuple as Julia has it ask
+# for it unmapped (`widen(…; uniform=false)`). A tuple of mixed types is a struct.
 isscalar(P) = P isa DataType && any(P === julia for (julia, _, _) in scalars)
-isuniform(T) = T isa DataType && T <: Tuple && !isempty(T.parameters) && all(P -> P === T.parameters[1], T.parameters) && isscalar(T.parameters[1])
-uniformed(T) = isuniform(T) ? shaped(T.parameters[1], (length(T.parameters),)) : T
+isitem(E) = isscalar(E) || E <: AbstractString || (E isa DataType && E <: AbstractArray && shape(E) !== nothing) || isstruct(E) || istuple(E)
+isuniform(T) = T isa DataType && T <: Tuple && !isempty(T.parameters) && all(P -> P === T.parameters[1], T.parameters) && isitem(uniformed(completed(T.parameters[1])))
+uniformed(T) = isuniform(T) ? shaped(uniformed(completed(T.parameters[1])), (length(T.parameters),)) : T
+
+# An array's innermost element type and every dimension down to it: a vector of 2×2
+# matrices is `double`, `[5][2][2]`, which is how C declares it, `double v[5][2][2]`.
+basetype(T::Type) = T <: AbstractArray ? basetype(eltype(T)) : T
+alldims(T::Type) = T <: AbstractArray ? [shape(T)...; alldims(eltype(T))] : Int[]
 
 # The C spelling of a Julia type.
 function ctype(T::Type)
@@ -336,8 +351,9 @@ extents(T::Type) = Tuple(extent(T, d) for d in 1:(isempty(axis(T)) ? 0 : maximum
 # compiler keep loads in registers across the stores.
 function declare(T::Type, name::AbstractString; constant::Bool=false, restrict::Bool=false)
     T <: AbstractArray || return (c = ctype(T); endswith(c, "*") ? c * name : c * " " * name)
-    s = shape(T)
-    s === nothing && throw(ArgumentError("arrays without a size in their type are not yet supported (got $T)"))
+    shape(T) === nothing && throw(ArgumentError("arrays without a size in their type are not yet supported (got $T)"))
+    s = alldims(T)
     first = (restrict ? "[restrict " : "[") * string(s[1]) * "]"
-    return (constant ? "const " : "") * ctype(eltype(T)) * " " * name * first * join("[$n]" for n in s[2:end])
+    c = ctype(basetype(T))
+    return (constant ? "const " : "") * c * (endswith(c, "*") ? "" : " ") * name * first * join("[$n]" for n in s[2:end])
 end

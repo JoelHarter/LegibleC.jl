@@ -33,7 +33,7 @@ function brackets(u::SVector{3,Float64}, v::SVector{3,Float64})
     -w
 end
 
-src = csource("comment", scaled, project, nodoc, steps, built, single, longexpr, brackets)
+src = csource("comment", scaled, project, nodoc, steps, built, single, longexpr, brackets; line=true)   # with the locator, to test it
 # A multi-line call whose arguments are statements of their own lines (2026-10-01): the
 # statement is one block comment, and the cursor moves to its end, or the inner lines were
 # written again one by one before the next statement.
@@ -54,7 +54,7 @@ Named = () -> begin
     return π * Γ
 end
 @testset "multi-line statement" begin
-    src = csource("multiline", multiline, Named)
+    src = csource("multiline", multiline, Named; line=true)
     @test occursin(r"    /\* @comment\.jl:\d+-\d+:\n       v = SVector\(\n           sin\(x\),\n           cos\(x\),\n           x\n       \)\n    \*/\n    v\[0\] = sin\(x\);", src)
     @test !occursin(r"// @comment\.jl:\d+: sin\(x\),", src) && !occursin(r"// @comment\.jl:\d+: cos\(x\),", src)
     @test occursin("Julia signature: anonymous()", src) && occursin("void anonymous(double out[restrict 2][2]) {", src) && !occursin("-> begin", src)
@@ -85,6 +85,11 @@ end
     @test occursin("mul_3x3_3x3(A, B, out);\n", src) && !occursin("mul_3x3_3x3(A, B, out);  //", src)
     bare = csource("commentless", scaled; source=false)
     @test occursin("// Scale first.", bare) && !occursin("B = A * s      #", bare)
+    # Off unless asked for: the locator. Off when told: the author's own comments and docstrings.
+    plain = csource("plain", scaled)
+    @test occursin("    // B = A * s      # trailing on a line of code", plain) && !occursin("@comment.jl", plain) && occursin("// Scale first.", plain) && occursin("Julia signature: scaled(A::", plain)
+    mute = csource("mute", scaled; comment=false)
+    @test occursin("    // B = A * s\n", mute) && !occursin("Scale first", mute) && !occursin("trailing on", mute) && !occursin("Scales a 2x2 matrix", mute) && occursin("Julia signature: scaled(", mute)
     # Spacing: a blank line before each Julia statement's C, source comments or not;
     # none after the opening brace or before the closing one.
     @test occursin("mul_2x2_s(A, s, B);\n\n    // @comment.jl:", src) && occursin("mul_2x2_s(A, s, B);\n\n    add_2x2(B, A, C);", bare)   # C lives in out (`outplacement!`)

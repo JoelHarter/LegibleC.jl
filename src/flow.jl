@@ -441,6 +441,50 @@ function boundchanges(sc::Scope, F::For)
     return false
 end
 
+# Does the body of `F` read its loop variable only as an index — in a subscript, or as the
+# variable plus or minus a literal that is then only a subscript? Then counting it from 0 in C
+# changes nothing a reader of the C can see, and the `- 1` can go (`forloop!`, `subscript`).
+function indexonly(sc::Scope, F::For)
+    code = sc.ci.code
+    for k in F.bodylo:F.bodyhi
+        k in F.machinery && continue
+        F.var in slotreads(code[k]) || continue
+        st = code[k]
+        if st isa Core.SlotNumber
+            indexuse(sc, k) || return false            # read into a value: every use of that value is an index
+        elseif st isa Expr && st.head !== :(=)
+            isindexuse(sc, st, x -> x isa Core.SlotNumber && x.id == F.var, k) || return false
+        else
+            return false
+        end
+    end
+    return true
+end
+
+# Is the value `isit` picks out used by `c` only as an index — the index of a `getindex` or
+# `setindex!`, never the array or the value stored; or added to or less a literal, when that
+# sum (statement `u`) is itself only an index? `n - i` doesn't count: the shift wouldn't cancel.
+function isindexuse(sc::Scope, c, isit, u)
+    c isa Expr && c.head === :call || return false
+    f = callee_or_nothing(sc.ci, c.args[1])        # `i + 1` calls `+` through a value of its own
+    f === Base.getindex  && return !isit(c.args[2])
+    f === Base.setindex! && return !isit(c.args[2]) && !isit(c.args[3])
+    (f === Base.:+ || f === Base.:-) && length(c.args) == 3 || return false
+    a, b = c.args[2], c.args[3]
+    f === Base.:- && isit(b) && return false
+    (isit(a) && literal(sc, b) isa Integer || isit(b) && literal(sc, a) isa Integer) || return false
+    return indexuse(sc, u)
+end
+
+# Is SSA value `k` used only as an index, in the sense of `isindexuse`?
+function indexuse(sc::Scope, k)
+    for (u, st) in enumerate(sc.ci.code)
+        uses(st, k) || continue
+        isindexuse(sc, consumer(st), x -> x isa Core.SSAValue && x.id == k, u) || return false
+    end
+    return true
+end
+
 function forloop!(lines, sc::Scope, F::For)
     annotate!(lines, sc, sc.stmtline[F.start])
     # A nest that a `break` leaves whole. Its outermost loop owns the name: a flag that every
@@ -453,7 +497,8 @@ function forloop!(lines, sc::Scope, F::For)
     end
     going = nest != 0 && !gotos[] ? " && !$(sc.flags[nest])" : ""
     var = sc.names[F.var]
-    T = ctype(widen(sc.ci.slottypes[F.var]))
+    E = widen(sc.ci.slottypes[F.var])
+    T = isarray(E) ? "" : ctype(E)        # an item of a vector of matrices: a pointer to it, below
     lo = bound(sc, F.lo)
     hi = bound(sc, F.hi)
     # Julia builds the range once, so its end is read once; C's header reads it every pass.
@@ -467,8 +512,9 @@ function forloop!(lines, sc::Scope, F::For)
     code = sc.ci.code
     within(s) = any(i -> !(i in F.machinery) && assigns(code[i], s), F.bodylo:F.bodyhi)
     if F.array !== nothing
-        # `for x in v`: a 0-based index the Julia never named, then the element.
-        array = value(sc, F.array)
+        # `for x in v`: a 0-based index the Julia never named, then the element. The array may
+        # be a field read, `for m in s.m`, a statement the loop's own machinery swallowed: rendered here.
+        array = F.array isa Core.SSAValue && !haskey(sc.expr, F.array.id) && sc.ci.code[F.array.id] isa Expr ? string(render(sc, F.array.id, sc.ci.code[F.array.id])) : value(sc, F.array)
         s = slotof(sc, F.array)
         if s !== nothing && within(s)
             # The body gives `v` a new value. Julia goes on through the array it started
@@ -483,7 +529,13 @@ function forloop!(lines, sc::Scope, F::For)
         emit!(lines, sc, "for (int64_t $k = 0; $k < $hi$going; $k++) {")
         if any(i -> F.var in slotreads(code[i]), F.bodylo:F.bodyhi)       # a body that never reads `x` has no `x`
             sc.depth += 1
-            emit!(lines, sc, "$T $var = $array[$k];")
+            if isarray(E)
+                # `for m in t` over a vector of matrices: `m` is the k-th item where it is.
+                emit!(lines, sc, pointerdecl(E, var, "$array[$k]") * ";")
+                push!(sc.pointers, var)
+            else
+                emit!(lines, sc, "$T $var = $array[$k];")
+            end
             sc.depth -= 1
             sc.pending = "$var = $array[$k]"
         end
@@ -501,12 +553,23 @@ function forloop!(lines, sc::Scope, F::For)
         count = indices(1; taken=union(sc.names, sc.outer))[1]
         push!(sc.names, count)
     end
+    # A loop variable the body reads only as an index — `v[i]`, `A[i, j]`, `v[i + 1]` — is
+    # counted from 0 in C, as a C author counts: `for (i = 0; i < n; i++)` and `v[i]`, the
+    # `- 1` gone from both. Read in any other way — returned, printed, multiplied, compared,
+    # a bound of another loop — it keeps Julia's count, and the `- 1` stays at its subscripts.
+    (F.step === nothing || F.step isa Integer) || throw(ArgumentError("a range step must be a literal (statement $(F.start))"))
+    shift = count == var && indexonly(sc, F)
+    shift && push!(sc.shifted, F.var)
+    v = literal(sc, F.lo)
+    start = !shift ? lo : v isa Integer ? string(v - 1) : string(subscript(sc, F.lo))
     if F.step === nothing
-        emit!(lines, sc, "for ($T $count = $lo; $count <= $hi$going; $count++) {")
+        emit!(lines, sc, "for ($T $count = $start; $count $(shift ? "<" : "<=") $hi$going; $count++) {")
+    elseif F.step > 0
+        emit!(lines, sc, "for ($T $count = $start; $count $(shift ? "<" : "<=") $hi$going; $count += $(F.step)) {")
     else
-        F.step isa Integer || throw(ArgumentError("a range step must be a literal (statement $(F.start))"))
-        cmp = F.step > 0 ? "<=" : ">="
-        emit!(lines, sc, "for ($T $count = $lo; $count $cmp $hi$going; $count += $(F.step)) {")
+        v = literal(sc, F.hi)
+        stop = !shift ? hi : v isa Integer ? string(v - 1) : string(subscript(sc, F.hi))
+        emit!(lines, sc, "for ($T $count = $start; $count >= $stop$going; $count += $(F.step)) {")
     end
     sc.pending = "$var = $lo; $var <= $hi"
     if count != var

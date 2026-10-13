@@ -26,7 +26,7 @@ marked as such rather than forced.
 | parametric `struct Point{T}` at a concrete `T` | one C struct per instantiation, name mangled like a function's: `Point_F32` | ✅ |
 | `Base.@kwdef` | designated initializers `(Point){.x = 1, .y = 2}` | ⬜ |
 | `Tuple` (heterogeneous), multiple return values | a generated struct `Tuple_F64_I64`, returned by value — §3.2 | ✅ |
-| `NTuple{N,T}` (homogeneous, `T` a scalar) | a C array `T a[N]`, wherever it stands; a return of named variables keeps its named struct | ✅ |
+| `NTuple{N,T}` (homogeneous, any `T`) | a C array `T a[N]`, wherever it stands, `double a[N][2][2]` for matrices, `Point a[N]` for structs; a return of named variables keeps its named struct | ✅ |
 | `NamedTuple` | a struct with those field names | ⬜ |
 | `@enum` | `typedef enum { RED, GREEN } Color;` | ⬜ |
 | `Union{T, Nothing}`, `missing` | `struct { bool present; T value; }`, or `NaN` for floats, or a null pointer for structs — §3.3 | ⬜ |

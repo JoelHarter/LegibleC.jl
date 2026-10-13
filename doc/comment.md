@@ -36,7 +36,7 @@ function fancy(a::Float64, b::Float64)
  *
  * Adds, then scales.
  *
- * Julia signature: fancy(a::Float64, b::Float64) @probe.jl:8
+ * Julia signature: fancy(a::Float64, b::Float64)
  * @param[in]  a    scalar
  * @param[in]  b    scalar
  */
@@ -83,7 +83,7 @@ the body.
 | blank | nothing — see *Spacing* below |
 | only a comment (`# …`) | the comment, as `// …` |
 | a `#= … =#` block | one `/* … */` block, its lines' indentation kept |
-| code, with or without a trailing comment | the whole line, as `@file:line: code` — see below |
+| code, with or without a trailing comment | the whole line, `// code`, or `// @file:line: code` with the `line` option — see below |
 | only closing brackets or `end`, e.g. `end`, `)`, `])` | its trailing comment, if any; not the code |
 | the signature line of a `function … end` | its trailing comment, if any; not the code |
 | the whole line of a short-form `f(x) = …` | what follows the `=` — the signature is in the Doxygen block already |
@@ -96,7 +96,7 @@ included — prefixed with `@`, the file's name and the line number:
 
 ```c
     // first the sum
-    // @probe.jl:10: s = a + b      # trailing on code
+    // s = a + b      # trailing on code
     s = a + b;
 ```
 
@@ -121,10 +121,10 @@ with `source=false` too; the blank is then the only thing marking where one
 statement's C ends and the next begins.
 
 ```c
-    // @demo.jl:9: r = norm(x)
+    // r = norm(x)
     double r = norm_3(x_);
 
-    // @demo.jl:10: a = -x / r^3
+    // a = -x / r^3
     double temp1 = r * r * r;
     double a[3];
     div_3_s(x_, -temp1, a);
@@ -189,7 +189,7 @@ are not aligned with each other: with declarations sitting between the
 steps, alignment would only look like it had failed.
 
 ```c
-// @f.jl:12: f(A, b, c, D) = (A .+ b) \ c + D
+// f(A, b, c, D) = (A .+ b) \ c + D
 double temp1[3][3];
 addP_3x3_3(A, b, temp1);  // temp1 = A .+ b
 double temp2[3];
@@ -236,8 +236,8 @@ records its step.
   is preserved.
 - A Julia statement spanning several lines — brackets still open, or an
   operator waiting for its right side, at the end of a line — is one block
-  comment above its C, `/* @file:14-18:` in front, the lines inside with
-  their own indentation, `*/` on its own line.
+  comment above its C, `/*` in front (`/* @file:14-18:` with the `line`
+  option), the lines inside with their own indentation, `*/` on its own line.
 - Leading whitespace is dropped; the C's own indentation applies.
 - Generated helpers have no Julia source; they get the `///` line above and nothing else.
 - A function whose source can't be found (defined at the REPL, or via `-e`)

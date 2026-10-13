@@ -267,7 +267,7 @@ check("outplaced", [Case(state, SVector(1.0, 0.0, 0.0), SVector(0.0, 1.0, 0.0), 
     @test occursin("memcpy(out, A, sizeof(double[2][3]));\n    double (*A_local)[3] = out;", src) && occursin("mulP_2x3F64_sI64(A_local, 2, A_local);", src) && occursin("memcpy(out[2], r, sizeof(double[3]));", src)   # stacked
     @test occursin("void sliced(double a[restrict 3])", src) && occursin("a = m[2, :]\n    memcpy(a, m[1], sizeof(double[3]));\n}", src)   # one copy, into the parameter
     @test occursin("double m[3][3] = {\n        {4, 8, 1},\n        {5.0, 9, 2},\n        {4, 8, 0},\n    };", src)   # a literal is declared with its initializer, a row per line
-    @test occursin("void either(const double v[3], bool c, double a[restrict 3])", src) && occursin("mul_3_s(v, 2.0, a);\n\n        // @", src) && occursin("mul_3_s(v, 3.0, a);\n}", src) && !occursin("double *a = out", src)
+    @test occursin("void either(const double v[3], bool c, double a[restrict 3])", src) && occursin("mul_3_s(v, 2.0, a);\n\n        // ", src) && occursin("mul_3_s(v, 3.0, a);\n}", src) && !occursin("double *a = out", src)
     @test_throws ArgumentError csource("resized", resized)
 end
 

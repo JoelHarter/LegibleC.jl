@@ -72,7 +72,7 @@ src = csource("name", looped, rebound, squared, branched, square, bare, chain, b
     # A reassigned array parameter is worked on as a copy `x_` made at the top under a
     # comment — in `out`, when that is where it ends up (`outplacement!`); elementwise
     # helpers then write it in place. A reassigned scalar is the parameter.
-    @test occursin("    // copy x and v into out, where the function works on them and returns them\n    memcpy(out, x, sizeof(double[3]));\n    double *x_local = out;\n    memcpy(&out[3], v, sizeof(double[3]));\n    double *v_local = &out[3];\n\n    // @name.jl", src)
+    @test occursin("    // copy x and v into out, where the function works on them and returns them\n    memcpy(out, x, sizeof(double[3]));\n    double *x_local = out;\n    memcpy(&out[3], v, sizeof(double[3]));\n    double *v_local = &out[3];\n\n    // ", src)
     @test occursin("mul_s_3(dt, x_local, temp1_dt_x);", src) && occursin("add_3(v_local, temp1_dt_x, v_local);", src) && occursin("div_3_s(x_local, 2.0, x_local);", src)   # temps are named from the Julia, not the copy
     @test occursin("    // copy x into out, where the function works on it and returns it\n    memcpy(out, x, sizeof(double[3]));\n    double *x_local = out;\n\n", src) && occursin("mul_3_s(x_local, 2.0, x_local);", src)
     @test occursin("mul_2x2_2x2(A_local, A_local, temp", src) && occursin("add_2x2(A_local, A_local, A_local);", src)

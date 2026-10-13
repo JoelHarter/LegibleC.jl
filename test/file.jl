@@ -37,7 +37,7 @@ check("lib", [Case(fall, 2.0), Case(far, Point(3.0, 4.0)), Case(alone, 1.0), Cas
     out = dirname(paths[1])
     @test sort(readdir(out)) == ["Point.h", "alone.c", "alone.h", "fall.c", "fall.h", "far.c", "far.h", "height.c", "height.h", "lib.h", "lib_common.h", "square.c", "square.h"]
     text(f) = read(joinpath(out, f), String)
-    @test occursin("// @file.jl:7: const g = 9.81   # gravity, m/s²\nstatic const double g = 9.81;", text("lib_common.h"))
+    @test occursin("// const g = 9.81   # gravity, m/s²\nstatic const double g = 9.81;", text("lib_common.h"))
     @test all(occursin("#include \"$h\"", text("lib.h")) for h in ("lib_common.h", "height.h", "far.h", "alone.h", "fall.h", "square.h", "Point.h"))
     @test occursin("#ifndef LIB_H\n#define LIB_H\n\n#include", text("lib.h")) && !occursin("static const", text("lib.h"))
     @test occursin("#include \"lib_common.h\"\n#include \"square.h\"\n#include \"fall.h\"\n", text("fall.c")) && occursin("return 0.5 * g * square(t);", text("fall.c"))

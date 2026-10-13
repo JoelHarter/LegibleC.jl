@@ -37,7 +37,11 @@ function describe(T::Type; typed::Bool=false, plural::Bool=false)
     # Complex says "complex", and its precision only when that isn't double, as the name does.
     word(E) = E <: Complex ? "complex " * (typed && E !== ComplexF64 ? "$(real(E)) " : "") : typed ? "$E " : ""
     T <: AbstractArray || return word(T) * (plural ? "scalars" : "scalar")
-    return (isconjugated(T) ? "adjoint " : istransposed(T) ? "transposed " : "") * word(eltype(T)) * sizeword(T) * "-" * noun(T; plural)
+    E = eltype(T)
+    # A vector of matrices, or of structs: "5-vector of 2×2 matrices", "3-vector of Points".
+    E <: AbstractArray && return sizeword(T) * "-" * noun(T; plural) * " of " * describe(E; typed, plural=true)
+    isstruct(E) && return sizeword(T) * "-" * noun(T; plural) * " of " * structname(E) * "s"
+    return (isconjugated(T) ? "adjoint " : istransposed(T) ? "transposed " : "") * word(E) * sizeword(T) * "-" * noun(T; plural)
 end
 
 # The comment for the helper for `op` on `types`, producing `R`.

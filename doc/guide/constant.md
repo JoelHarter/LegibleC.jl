@@ -12,7 +12,7 @@ const c = 299_792_458.0   # speed of light, m/s
 ```
 
 ```c
-// @codata.jl:5: const c = 299_792_458.0   # speed of light, m/s
+// const c = 299_792_458.0   # speed of light, m/s
 static const double c = 2.99792458e8;
 ```
 

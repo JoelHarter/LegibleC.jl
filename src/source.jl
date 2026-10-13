@@ -69,6 +69,7 @@ line, a line of code, or the top of the file.
 function leading(src::Source)
     out = String[]
     doc = String[]
+    comments[] || return out, doc          # the author's comments and docstrings, left out when told
     k = src.first - 1
     while k >= 1
         s = strip(src.lines[k])
@@ -148,7 +149,12 @@ function body(src::Source, from::Integer, to::Integer; code::Bool=true)
         line = src.lines[k]
         s = strip(line)
         isempty(s) && continue
-        if startswith(s, "#=")
+        if startswith(s, "#=") && !comments[]
+            e = k
+            while !occursin("=#", e == k ? s[3:end] : src.lines[e]) && e < length(src.lines); e += 1; end
+            k = e
+            continue
+        elseif startswith(s, "#=")
             # A `#= … =#` comment is one `/* … */` block, its lines' indentation kept
             # relative to the first; `*/` sits on the last line, or alone if `=#` did.
             e = k
@@ -172,8 +178,9 @@ function body(src::Source, from::Integer, to::Integer; code::Bool=true)
             continue
         end
         text, trailing = split_comment(s)
+        comments[] || (trailing = nothing; s = text)        # the author's comments, left out when told: the line without its own
         if isempty(text)
-            push!(out, comment(trailing))
+            trailing === nothing || push!(out, comment(trailing))
         elseif minor(text) || (k == src.first && !src.short)
             trailing === nothing || push!(out, comment(trailing))
         elseif code
@@ -183,13 +190,13 @@ function body(src::Source, from::Integer, to::Integer; code::Bool=true)
             # in front and the lines inside with their own indentation kept.
             e = statementend(src, k)
             if e > k
-                block = [k == src.first && src.short ? afterdef(s) : s; [src.lines[j] for j in k+1:e]]
-                push!(out, "/* @$(src.name):$k-$e:")
+                block = [k == src.first && src.short ? afterdef(s) : s; [comments[] ? src.lines[j] : split_comment(src.lines[j])[1] for j in k+1:e]]
+                push!(out, locator[] ? "/* @$(src.name):$k-$e:" : "/*")
                 append!(out, "   " .* rstrip.(dedent(block; by=indentof(line))))
                 push!(out, "*/")
                 k = e
             else
-                push!(out, "// @$(src.name):$k: " * (k == src.first && src.short ? afterdef(s) : s))
+                push!(out, "// " * (locator[] ? "@$(src.name):$k: " : "") * (k == src.first && src.short ? afterdef(s) : s))
             end
         elseif trailing !== nothing
             push!(out, comment(trailing))

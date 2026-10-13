@@ -83,7 +83,7 @@ check("global", [Case(fall, 2.0), Case(shifted, SVector(1.0, 1.0, 1.0)), Case(sc
     @test occursin("const double Physics_c = 3.0e8;", far) && occursin("const double Moon_a = 1737.0;", far)
     # The constant's Julia line comes with it, as a statement's does, its comment along; a
     # name read twice is written twice, not held in a temp.
-    @test occursin(r"// @global\.jl:\d+: const c = 3\.0e8   # the speed of light, m/s\nstatic const double Physics_c = 3\.0e8;\n", far) && occursin("Moon_a = 1737.0;\n", far)
+    @test occursin("// const c = 3.0e8   # the speed of light, m/s\nstatic const double Physics_c = 3.0e8;\n", far) && occursin("Moon_a = 1737.0;\n", far)
     @test occursin("const double Physics_c = 3.0e8;  // the speed of light, m/s", csource("farbare", travel, energy; scope=@__MODULE__, source=false))   # source off: the note after the declaration
     @test occursin("return m * (Physics_c * Physics_c);", far)
     @test occursin("double Physics_speed(double t)", far) && occursin("return Physics_speed(t) + Moon_a + Physics_c;", far) && occursin("double travel(double t)", far)

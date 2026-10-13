@@ -26,8 +26,8 @@ it, because that is the standard it is held to.
 Three lines of Julia, and the C each becomes. In each pair, the first box is
 the Julia as its author wrote it, and the second is what LegibleC wrote from
 nothing but that — every character of it, the comments included. Nothing in
-the C boxes was added by a person: the `// @orbit.jl:18:` lines, the
-`// beta = temp1 \ temp2` steps, and the `///` helper descriptions
+the C boxes was added by a person: the `// β = (X' * X) \ (X' * y)` lines,
+the `// beta = temp1 \ temp2` steps, and the `///` helper descriptions
 are all the transpiler's.
 
 **Julia:** a physicist's line, names and all.
@@ -42,7 +42,7 @@ are all the transpiler's.
 transpiler wrote that too.
 
 ```c
-// @showcase.jl:7: ẍ = -2ζ * ω₀ * ẋ - ω₀^2 * x
+// ẍ = -2ζ * ω₀ * ẋ - ω₀^2 * x
 double xddot = -2 * zeta * omega0 * xdot - omega0 * omega0 * x;
 ```
 
@@ -63,7 +63,7 @@ performs, in the C names — so you can follow the line's work through the
 temps without losing the thread.
 
 ```c
-// @orbit.jl:18: β = (X' * X) \ (X' * y)
+// β = (X' * X) \ (X' * y)
 double temp1[2][2];
 mul_T4x2_4x2(X, X, temp1);  // temp1 = Xᵀ * X
 double temp2[2];

@@ -580,7 +580,7 @@ end
     src = csource("decidedtext", trait, traitvalue, unused, inboundsexpr, effectcond)
     @test occursin("double y = x + 1.0;\n", src) && !occursin("bool usefast", src)                # the branch that runs, alone, and the function it asked isn't brought in
     @test occursin("return x + 1.0;", src)                                                     # `(usefast() ? x : -x) + (useslow() ? 100.0 : 1.0)`
-    @test !occursin("double t =", src) && !occursin("double u =", src) && !occursin("double val", src) && occursin("s += v[k - 1];", src)   # nothing unused is declared
+    @test !occursin("double t =", src) && !occursin("double u =", src) && !occursin("double val", src) && occursin("s += v[k];", src)   # nothing unused is declared; `k` is read only as an index, so it counts from 0
     @test occursin("bump()", src)                                                                     # a condition with an effect still runs
 end
 

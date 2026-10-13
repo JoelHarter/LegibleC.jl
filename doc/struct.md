@@ -91,17 +91,23 @@ returned isn't plain variables — `(v, 2.0 * v)`, or returns that disagree —
 the fields are positional letters and the struct is the structural
 `Tuple3xx3`.
 
-A **tuple of one scalar type** — `NTuple{28, Float64}`, `(a, 2a, 3a)`, which
-are one type to Julia — is a **C array** wherever it stands, since a C author
-writes `double a[28]` and never a struct of 28 lettered fields: a field
-`double a[28]` read as `r.a[27]`, a parameter `double third(const double
-t[3])` with `t[1]` as `t[0]`, a tuple built for a call as an array built for
-it, `double temp1[3] = {a, 2 * a, 3 * a}; third(temp1)`, and a positional
-return, `return x, 2x`, out through an array parameter like any array, read
-back as `temp1[0]`, `temp1[1]`. The one exception is the return of named
-variables above, `return x, ẋ`, which keeps its named struct: that is told by
-the function's `Kind`, not by the type. `extrema(v)` is such a pair, out
-through a parameter.
+A **tuple of N items of one type** — `NTuple{28, Float64}`, `(a, 2a, 3a)`, a
+tuple of 2×2 matrices, of `Point`s, of such tuples: one type to Julia however
+it is written — is an `SVector{N, T}` in all but spelling, and is treated as
+that vector: a **C array `T a[N]`** whatever `T` is, since a C author writes
+`double a[28]`, `double m[2][2][2]`, `Point p[2]`, and never a struct of 28
+lettered fields. `t[k]` is the k-th item, `a[k-1]`: a field `double a[28]`
+read as `r.a[27]`, a matrix picked out of `s.m[2]` as `s.m[1]` and its element
+`s.m[2][1, 2]` as `s.m[1][0][1]`, a parameter `double third(const double
+t[3])`, a tuple built for a call as an array built for it, `double temp1[3] =
+{a, 2 * a, 3 * a}; third(temp1)`, a tuple of matrices built item by item with
+`memcpy`, and a positional return, `return x, 2x` or `return A, B`, out
+through an array parameter like any array, read back as `temp1[0]`, `temp1[1]`.
+The one exception is the return of named variables above, `return x, ẋ`,
+which keeps its named struct: that is told by the function's `Kind`, not by
+the type. `extrema(v)` is such a pair, out through a parameter. A vector of
+matrices or of structs written as one, `SVector{2, SMatrix{2,2,Float64,4}}`,
+goes the same way.
 
 A **tuple of mixed types** as a parameter is spread into one parameter per
 element, `t1`, `t2`, …, and built only to be passed to a function goes as

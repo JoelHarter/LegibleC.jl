@@ -36,7 +36,7 @@ statement in a function does, comment and all — `const c = 299_792_458.0
 # speed of light, m/s` gives
 
 ```c
-// @codata.jl:5: const c = 299_792_458.0  # speed of light, m/s
+// const c = 299_792_458.0  # speed of light, m/s
 static const double CODATA_c = 2.99792458e8;
 ```
 

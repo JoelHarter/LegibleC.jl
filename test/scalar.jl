@@ -435,7 +435,7 @@ end
     @test occursin("return (int64_t)(a * b) * 1000;", src)
     @test occursin("return (int64_t)(((a % 3) + 3) % 3) * 2000000000;", src)
     @test occursin("return (int64_t)(c ? 1 : 2) * 2000000000;", src)
-    @test occursin("bool twoabove(uint32_t u) {\n    // @scalar.jl", src) && occursin("return true;", src) && occursin("return false;", src)   # what the types alone decide
+    @test occursin("bool twoabove(uint32_t u) {\n    // ", src) && occursin("return true;", src) && occursin("return false;", src)   # what the types alone decide
     @test occursin("return k < (int64_t)u;", src) && occursin("return (int64_t)u > m;", src)
     @test occursin("int64_t twoleast(uint32_t u) {", src) && occursin("return (int64_t)u;", src)
     @test occursin("return (u > (uint32_t)k ? u : (uint32_t)k);", src)

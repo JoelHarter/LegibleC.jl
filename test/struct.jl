@@ -136,6 +136,29 @@ struct Holder
     t::NTuple{3,Float64}
 end
 holding(a::Float64) = Holder((a, a, 2a))
+# A tuple of N items of any one type is a vector of them: of matrices, of structs, of tuples.
+struct Stack
+    m::NTuple{2,SMatrix{2,2,Float64}}
+end
+pick(s::Stack) = s.m[2]
+corner(s::Stack) = s.m[2][1, 2] * 2.0
+items(s::Stack) = length(s.m)
+stacked(A::SMatrix{2,2,Float64,4}, B::SMatrix{2,2,Float64,4}) = Stack((A, B))
+kept2(s::Stack) = (m = s.m[1]; m[1, 1] + m[2, 2])
+nested(x::Float64) = ((x, 2x), (3x, 4x))
+deep(x::Float64) = (t = nested(x); t[2][1] + t[1][2])
+struct Twin
+    p::NTuple{2,Point}
+end
+second(q::Twin) = q.p[2].y
+paired2(a::Point, b::Point) = Twin((a, b))
+function total(s::Stack)
+    acc = 0.0
+    for m in s.m
+        acc += m[1, 1] + m[2, 2]
+    end
+    return acc
+end
 
 p = Point(3.0, 4.0); q = Point(1.0, 2.0); b = Body(SVector(1.0, 2.0, 3.0), 2.5); v = SVector(1.0, 1.0, 1.0)
 check("placement", [Case(spun, SVector(0.0, 0.0, 1.0), 0.6), Case(spun2, SVector(0.0, 1.0, 0.0), 0.6), Case(rebuilt, Quat(1.0, SVector(1.0, 2.0, 3.0)), 2.0),
@@ -258,6 +281,20 @@ end
     @test occursin("Quaternion adjoint_Quaternion(Quaternion q)", src)
 end
 check("uniform", [Case(ends, Ring(Tuple(1.0:28.0))), Case(third, (1.0, 2.0, 3.0)), Case(viathird, 1.5), Case(unpairup, 3.0), Case(holding, 2.0)])
+M1, M2 = SMatrix{2,2}(1.0, 2.0, 3.0, 4.0), SMatrix{2,2}(5.0, 6.0, 7.0, 8.0)
+check("items", [Case(pick, Stack((M1, M2))), Case(corner, Stack((M1, M2))), Case(items, Stack((M1, M2))), Case(stacked, M1, M2), Case(kept2, Stack((M1, M2))),
+                Case(deep, 1.5), Case(second, Twin((Point(1.0, 2.0), Point(3.0, 4.0)))), Case(paired2, Point(1.0, 2.0), Point(3.0, 4.0)), Case(total, Stack((M1, M2)))])
+@testset "items text" begin
+    src = csource("items", pick, corner, items, stacked, kept2, deep, second, paired2, total)
+    @test occursin("typedef struct {\n    double m[2][2][2];\n} Stack;", src) && occursin("typedef struct {\n    Point p[2];\n} Twin;", src)
+    @test occursin("void pick(Stack s, double out[restrict 2][2])", src) && occursin("memcpy(out, s.m[1], sizeof(double[2][2]));", src)
+    @test occursin("return s.m[1][0][1] * 2.0;", src) && occursin("return 2;", src) && occursin("return q.p[1].y;", src)
+    @test occursin("memcpy(result.m[0], A, sizeof(double[2][2]));\n    memcpy(result.m[1], B, sizeof(double[2][2]));", src)
+    @test occursin("double m[2][2];\n    memcpy(m, s.m[0], sizeof(double[2][2]));", src)
+    @test occursin("void nested(double x, double out[restrict 2][2])", src) && occursin("return t[1][0] + t[0][1];", src)
+    @test occursin("result.p[0] = a;\n    result.p[1] = b;", src)
+    @test occursin("double (*m)[2] = s.m[i];", src) && occursin("acc += (m[0][0] + m[1][1]);", src)
+end
 @testset "uniform tuple text" begin
     src = csource("uniform", ends, viathird, unpairup, holding)
     @test occursin("typedef struct {\n    double a[28];\n} Ring;", src) && occursin("return r.a[0] + r.a[27];", src)
@@ -276,9 +313,9 @@ end
     # A tuple of one scalar type is an array: as a parameter, and built for a call.
     @test occursin("double third(const double t[3])", src) && occursin("return t[0] + t[2];", src) && occursin("double temp1[3] = {a, 2 * a, 3 * a};\n    return third(temp1);", src)
     # Variables returned in any order keep their names; an expression returned has none,
-    # so `arrays`, returning `(v, 2.0 * v)`, gets the structural struct with positional fields.
+    # so `arrays`, returning `(v, 2.0 * v)`, two 3-vectors, is a vector of them, out through a parameter.
     @test occursin("typedef struct {\n    double b;\n    double a;\n} tswap_t;", src) && occursin("return (tswap_t){b, a};", src)
-    @test occursin("Tuple3xx3 temp1 = arrays(v);", src)
+    @test occursin("void arrays(const double v[3], double out[restrict 2][3])", src) && occursin("double temp1[2][3];\n    arrays(v, temp1);", src)
 end
 # A constructor the author wrote is a function of the author's; only the one Julia gives every
 # struct, one argument a field, is the C literal. Each of these was written as the literal

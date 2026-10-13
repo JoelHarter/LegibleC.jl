@@ -32,7 +32,7 @@ check("boolint", [Case(flag, 2.0), Case(flag, -1.0), Case(pick, true, 3.0), Case
     @test occursin("return (int64_t)(b != 0) + n;", src)
     @test occursin("int32_t truth(void)", src) && occursin("return 1;", src)
     @test occursin("int64_t masked(const int32_t m[3])", src) && occursin("sum += (a[i] != 0);", src) && occursin("sum_3I32", src)
-    @test occursin("int32_t truth(void) {\n    // @option.jl:12: true\n    return 1;\n}", src)
+    @test occursin("int32_t truth(void) {\n    // true\n    return 1;\n}", src)
     @test occursin("printf(\"%d\\n\", b != 0);", src) && !occursin("stdbool.h", src)
     @test_throws ArgumentError csource("boolfloat", flag; bool=Float64)
 end
